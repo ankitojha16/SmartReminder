@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Smart Reminder</title>
+
+    <link rel="stylesheet" href="style.css">
+
+</head>
+
+
+<body>
+
+    <div class="app">
+
+
+        <!-- SIDEBAR -->
+
+        <aside class="sidebar">
+
+            <h1>
+                Smart<span>Reminder</span>
+            </h1>
+
+
+            <nav>
+
+                <button class="active" data-view="dashboard" onclick="showDashboard()">
+                    🏠 Dashboard
+                </button>
+
+                <button data-view="add" onclick="openAddTask()">
+                    ➕ Add Reminder
+                </button>
+
+                <button data-view="all" onclick="showAllTasks()">
+                    📋 All Tasks
+                </button>
+
+                <button data-view="calendar" onclick="showCalendar()">
+                    📅 Calendar
+                </button>
+
+                <button data-view="completed" onclick="showCompleted()">
+                    ✅ Completed
+                </button>
+
+            </nav>
+
+        </aside>
+
+
+
+        <!-- MAIN CONTENT -->
+
+        <main class="main">
+
+
+            <!-- HEADER -->
+
+            <header>
+
+                <div>
+
+                    <h2>
+                        Good Morning 👋
+                    </h2>
+
+                    <p>
+                        Here are your important reminders.
+                    </p>
+
+                </div>
+
+
+                <button class="notification" onclick="showNotifications()" title="Notifications">
+                    🔔
+                </button>
+
+            </header>
+
+
+
+            <!-- STATISTICS -->
+
+            <section class="stats">
+
+
+                <div class="stat-card">
+
+                    <h3 id="totalTasks">
+                        0
+                    </h3>
+
+                    <p>
+                        Total Tasks
+                    </p>
+
+                </div>
+
+
+
+                <div class="stat-card">
+
+                    <h3 id="pendingTasks">
+                        0
+                    </h3>
+
+                    <p>
+                        Pending
+                    </p>
+
+                </div>
+
+
+
+                <div class="stat-card">
+
+                    <h3 id="completedTasks">
+                        0
+                    </h3>
+
+                    <p>
+                        Completed
+                    </p>
+
+                </div>
+
+
+            </section>
+
+
+
+            <!-- IMPORTANT REMINDER -->
+
+            <section class="important">
+
+
+                <div class="section-title">
+
+                    <h2>
+                        🔴 Next Important Reminder
+                    </h2>
+
+                </div>
+
+
+                <div class="important-card">
+
+
+                    <div>
+
+                        <h2 id="nextTask">
+                            No reminders
+                        </h2>
+
+                        <p id="nextTime">
+                            Add a reminder to get started.
+                        </p>
+
+                    </div>
+
+
+                    <div class="priority">
+
+                        HIGH
+
+                    </div>
+
+
+                </div>
+
+
+            </section>
+
+
+
+            <!-- UPCOMING REMINDERS -->
+
+            <section class="upcoming">
+
+
+                <div class="section-title">
+
+                    <h2>
+                        Upcoming Reminders
+                    </h2>
+
+
+                    <button onclick="openAddTask()">
+
+                        + Add Reminder
+
+                    </button>
+
+                </div>
+
+
+
+                <div id="taskList">
+
+                    <p class="empty">
+                        No reminders yet.
+                    </p>
+
+                </div>
+
+
+            </section>
+
+
+        </main>
+
+    </div>
+
+
+
+    <!-- ADD REMINDER POPUP -->
+
+    <div id="taskModal" class="modal">
+
+
+        <div class="modal-content">
+
+
+            <h2>
+                Add Reminder
+            </h2>
+
+
+
+            <label>
+                Task Name
+            </label>
+
+            <input
+                type="text"
+                id="taskName"
+                placeholder="e.g. Doctor Appointment"
+            >
+
+
+
+            <label>
+                Date
+            </label>
+
+            <input
+                type="date"
+                id="taskDate"
+            >
+
+
+
+            <label>
+                Time
+            </label>
+
+            <input
+                type="time"
+                id="taskTime"
+            >
+
+
+
+            <label>
+                Priority
+            </label>
+
+            <select id="taskPriority">
+    <option value="1">Low</option>
+    <option value="2">Medium</option>
+    <option value="3">High</option>
+    <option value="4">Critical</option>
+</select>
+
+
+
+            <div class="modal-buttons">
+
+
+                <button onclick="closeAddTask()">
+
+                    Cancel
+
+                </button>
+
+
+                <button
+                    class="save"
+                    onclick="addTask()"
+                >
+
+                    Save Reminder
+
+                </button>
+
+
+            </div>
+
+
+        </div>
+
+
+    </div>
+
+
+
+    <!-- JAVASCRIPT -->
+
+    <script src="script.js"></script>
+
+
+</body>
+
+</html>
