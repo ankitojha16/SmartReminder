@@ -697,8 +697,11 @@ int main() {
         INADDR_ANY;
 
 
-    serverAddress.sin_port =
-        htons(8080);
+const char* portEnv = getenv("PORT");
+int port = portEnv ? atoi(portEnv) : 8080;
+
+serverAddress.sin_port =
+    htons(port);
 
 
     if (
