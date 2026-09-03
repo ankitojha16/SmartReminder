@@ -11,6 +11,8 @@
 #include <unistd.h>
 
 #include "Task.h"
+#include <fstream>
+#include <iterator>
 
 using namespace std;
 
@@ -569,6 +571,96 @@ if (headerEnd != string::npos) {
 
         return;
     }
+    // Serve frontend files
+if (request.find("GET /style.css") == 0) {
+
+    ifstream file("frontend/style.css");
+
+    if (!file.is_open()) {
+        sendResponse(
+            client,
+            "{\"success\":false,\"message\":\"style.css not found\"}"
+        );
+        return;
+    }
+
+    string content(
+        (istreambuf_iterator<char>(file)),
+        istreambuf_iterator<char>()
+    );
+
+    string response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/css\r\n"
+        "Content-Length: " + to_string(content.size()) + "\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Connection: close\r\n"
+        "\r\n" +
+        content;
+
+    send(client, response.c_str(), response.size(), 0);
+    return;
+}
+
+if (request.find("GET /script.js") == 0) {
+
+    ifstream file("frontend/script.js");
+
+    if (!file.is_open()) {
+        sendResponse(
+            client,
+            "{\"success\":false,\"message\":\"script.js not found\"}"
+        );
+        return;
+    }
+
+    string content(
+        (istreambuf_iterator<char>(file)),
+        istreambuf_iterator<char>()
+    );
+
+    string response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/javascript\r\n"
+        "Content-Length: " + to_string(content.size()) + "\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Connection: close\r\n"
+        "\r\n" +
+        content;
+
+    send(client, response.c_str(), response.size(), 0);
+    return;
+}
+
+if (request.find("GET / HTTP") == 0) {
+
+    ifstream file("frontend/index.html");
+
+    if (!file.is_open()) {
+        sendResponse(
+            client,
+            "{\"success\":false,\"message\":\"index.html not found\"}"
+        );
+        return;
+    }
+
+    string content(
+        (istreambuf_iterator<char>(file)),
+        istreambuf_iterator<char>()
+    );
+
+    string response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html\r\n"
+        "Content-Length: " + to_string(content.size()) + "\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Connection: close\r\n"
+        "\r\n" +
+        content;
+
+    send(client, response.c_str(), response.size(), 0);
+    return;
+}
 
 
     // Find request body
