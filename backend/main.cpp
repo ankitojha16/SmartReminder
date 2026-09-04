@@ -1588,7 +1588,98 @@ string getSchedule(const string& username) {
     return result;
 }
 
+// ============================================================
+// GEMINI AI PROXY
+// ============================================================
 
+string shellEscape(const string& value) {
+    string result = "'";
+    for (char c : value) {
+        if (c == '\'') {
+            result += "'\\''";
+        } else {
+            result += c;
+        }
+    }
+    result += "'";
+    return result;
+}
+
+string callGemini(const string& body) {
+
+    const char* envKey = getenv("GEMINI_API_KEY");
+
+    if (!envKey || string(envKey).empty()) {
+        return "{\"success\":false,\"message\":\"Gemini AI is not configured on the server.\"}";
+    }
+
+    string apiKey = envKey;
+
+    string message = getValue(body, "message");
+
+    if (message.empty()) {
+        return "{\"success\":false,\"message\":\"Message is required.\"}";
+    }
+
+    const string model = "gemini-3.5-flash";
+
+    const string endpoint =
+        "https://generativelanguage.googleapis.com/v1beta/models/" +
+        model + ":generateContent";
+
+    const string systemPrompt =
+        "You are the built-in assistant inside a reminder and daily-schedule app called Smart Reminder. "
+        "Only help with planning the user's day, building or adjusting their weekly schedule, and turning "
+        "things into reminders. Politely decline anything unrelated to scheduling, reminders, or daily "
+        "planning. Keep replies short and practical.\n\n"
+        "Whenever the user asks you to build or change a day plan or schedule, end your reply with a "
+        "fenced block exactly like this:\n"
+        "```schedule\n"
+        "[{\"day\":\"mon\",\"name\":\"Wake up\",\"start\":\"06:00\",\"end\":\"06:15\"}]\n"
+        "```\n"
+        "Use lowercase three-letter day codes, 24-hour HH:MM times, and one object per task. "
+        "Only include the day(s) the user actually asked about. "
+        "If you are not proposing a schedule, omit the fenced block.";
+
+    string jsonBody =
+        "{\"systemInstruction\":{\"parts\":[{\"text\":\"" +
+        jsonEscape(systemPrompt) +
+        "\"}]},\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"" +
+        jsonEscape(message) +
+        "\"}]}]}";
+
+    string command =
+        "curl -sS --max-time 60 -X POST " +
+        shellEscape(endpoint) +
+        " -H " + shellEscape("Content-Type: application/json") +
+        " -H " + shellEscape("x-goog-api-key: " + apiKey) +
+        " --data-binary " + shellEscape(jsonBody);
+
+    FILE* pipe = popen(command.c_str(), "r");
+
+    if (!pipe) {
+        return "{\"success\":false,\"message\":\"Could not start Gemini service.\"}";
+    }
+
+    string result;
+    char buffer[4096];
+
+    while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+        result += buffer;
+
+        if (result.size() > 1024 * 1024) {
+            break;
+        }
+    }
+
+    int exitCode = pclose(pipe);
+
+    if (exitCode != 0 || result.empty()) {
+        return "{\"success\":false,\"message\":\"Could not reach Gemini service.\"}";
+    }
+
+    return result;
+}
 // ============================================================
 // HANDLE HTTP REQUEST
 // ============================================================
@@ -2078,7 +2169,21 @@ if (request.find("GET / HTTP") == 0) {
         return;
     }
 
+// ============================================================
+// GEMINI AI CHAT
+// ============================================================
 
+if (request.find("POST /ai-chat") == 0) {
+
+    string response = callGemini(body);
+
+    sendResponse(
+        client,
+        response
+    );
+
+    return;
+}
     // UNKNOWN REQUEST
 
     sendResponse(

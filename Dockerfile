@@ -3,7 +3,7 @@ FROM gcc:latest
 WORKDIR /app
 
 RUN apt-get update && \
-    apt-get install -y libpq-dev && \
+    apt-get install -y libpq-dev curl && \
     rm -rf /var/lib/apt/lists/*
 
 COPY . .
