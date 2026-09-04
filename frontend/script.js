@@ -3737,23 +3737,18 @@ async function sendAiChatMessage() {
          * from Render environment variables.
          */
 
-        const response =
-            await fetch(
-                `${API}/ai-chat`,
-                {
-                    method: "POST",
+        const response = await fetch(
+    `${API}/ai-chat`,
+    {
+        method: "POST",
 
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    },
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded"
+        },
 
-                    body:
-                        JSON.stringify({
-                            message: text
-                        })
-                }
-            );
+        body: `message=${encodeURIComponent(text)}`
+    }
+);
 
 
         let data;
