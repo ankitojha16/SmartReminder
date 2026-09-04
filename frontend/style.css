@@ -495,3 +495,241 @@ body,
         border-color 0.3s ease,
         box-shadow 0.3s ease;
 }
+
+
+/* =========================================================
+   AUTH SCREEN (LOGIN / SIGNUP)
+   ========================================================= */
+
+.auth-screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(160deg, #111827, #1f2937 55%, #2563eb);
+    padding: 20px;
+}
+
+.auth-box {
+    width: 100%;
+    max-width: 380px;
+    background: white;
+    border-radius: 18px;
+    padding: 36px 32px;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.35);
+}
+
+.auth-box .brand {
+    justify-content: center;
+    margin-bottom: 28px;
+}
+
+.auth-form h2 {
+    font-size: 20px;
+    margin-bottom: 6px;
+    text-align: center;
+    color: #111827;
+}
+
+.auth-form label {
+    display: block;
+    margin-top: 15px;
+    margin-bottom: 5px;
+    font-size: 13px;
+    color: #374151;
+}
+
+.auth-form input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 7px;
+    font-size: 14px;
+}
+
+.auth-form input:focus {
+    outline: none;
+    border-color: #2563eb;
+}
+
+.auth-error {
+    color: #dc2626;
+    font-size: 13px;
+    margin-top: 10px;
+    min-height: 16px;
+}
+
+.auth-submit {
+    width: 100%;
+    margin-top: 18px;
+    padding: 13px;
+    background: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.auth-submit:hover {
+    background: #1d4ed8;
+}
+
+.auth-switch {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.auth-switch a {
+    color: #2563eb;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+
+/* =========================================================
+   SIDEBAR BRAND (LOGO ONLY AFTER LOGIN)
+   ========================================================= */
+
+.sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 40px;
+}
+
+.sidebar-brand h1 {
+    margin-bottom: 0;
+}
+
+
+/* =========================================================
+   PROFILE MENU
+   ========================================================= */
+
+.profile-menu {
+    position: relative;
+}
+
+.profile-arrow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    background: white;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2937;
+    cursor: pointer;
+}
+
+.profile-dropdown {
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 10px);
+    width: 220px;
+    background: white;
+    border-radius: 12px;
+    padding: 14px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    z-index: 20;
+}
+
+.profile-dropdown.open {
+    display: flex;
+}
+
+.profile-username {
+    font-size: 13px;
+    color: #6b7280;
+    margin-bottom: 4px;
+}
+
+.profile-dropdown button {
+    padding: 10px 12px;
+    border: none;
+    border-radius: 8px;
+    background: #f3f4f6;
+    text-align: left;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.profile-dropdown button:hover {
+    background: #e5e7eb;
+}
+
+.profile-dropdown .logout-btn {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.profile-dropdown .logout-btn:hover {
+    background: #fecaca;
+}
+
+
+/* =========================================================
+   DARK THEME - AUTH & PROFILE
+   ========================================================= */
+
+body.dark-theme .auth-box {
+    background: #1e293b;
+    color: #f8fafc;
+}
+
+body.dark-theme .auth-form h2 {
+    color: #f8fafc;
+}
+
+body.dark-theme .auth-form label {
+    color: #cbd5e1;
+}
+
+body.dark-theme .auth-form input {
+    background: #0f172a;
+    color: white;
+    border-color: #475569;
+}
+
+body.dark-theme .profile-arrow {
+    background: #1e293b;
+    color: #f8fafc;
+}
+
+body.dark-theme .profile-dropdown {
+    background: #1e293b;
+}
+
+body.dark-theme .profile-dropdown button {
+    background: #334155;
+    color: #f8fafc;
+}
+
+body.dark-theme .profile-dropdown button:hover {
+    background: #475569;
+}
+
+
+/* =========================================================
+   MOBILE - AUTH
+   ========================================================= */
+
+@media (max-width: 768px) {
+
+    .auth-box {
+        padding: 28px 22px;
+    }
+
+    .profile-dropdown {
+        width: 200px;
+    }
+}

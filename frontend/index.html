@@ -17,16 +17,99 @@
 
 <body>
 
-    <div class="app">
+    <!-- ===================================== -->
+    <!-- AUTH SCREEN (LOGIN / SIGNUP)           -->
+    <!-- ===================================== -->
+
+    <div id="authScreen" class="auth-screen">
+
+        <div class="auth-box">
+
+            <div class="brand">
+
+                <div class="brand-logo">
+                    <span>⏰</span>
+                </div>
+
+                <div class="brand-text">
+                    <h1>Smart<span>Reminder</span></h1>
+                    <p>Never miss what matters.</p>
+                </div>
+
+            </div>
+
+
+            <!-- LOGIN FORM -->
+
+            <div id="loginForm" class="auth-form">
+
+                <h2>Welcome back</h2>
+
+                <label>Username</label>
+                <input type="text" id="loginUsername" placeholder="Your username">
+
+                <label>Password</label>
+                <input type="password" id="loginPassword" placeholder="Your password">
+
+                <p id="loginError" class="auth-error"></p>
+
+                <button class="auth-submit" onclick="loginUser()">Log In</button>
+
+                <p class="auth-switch">
+                    Don't have an account? <a onclick="showSignup()">Sign up</a>
+                </p>
+
+            </div>
+
+
+            <!-- SIGNUP FORM -->
+
+            <div id="signupForm" class="auth-form" style="display:none;">
+
+                <h2>Create your account</h2>
+
+                <label>Username</label>
+                <input type="text" id="signupUsername" placeholder="Choose a username">
+
+                <label>Password</label>
+                <input type="password" id="signupPassword" placeholder="At least 6 characters">
+
+                <label>Confirm Password</label>
+                <input type="password" id="signupConfirmPassword" placeholder="Repeat your password">
+
+                <p id="signupError" class="auth-error"></p>
+
+                <button class="auth-submit" onclick="signupUser()">Sign Up</button>
+
+                <p class="auth-switch">
+                    Already have an account? <a onclick="showLogin()">Log in</a>
+                </p>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div class="app" id="appScreen" style="display:none;">
 
 
         <!-- SIDEBAR -->
 
         <aside class="sidebar">
 
-            <h1>
-                Smart<span>Reminder</span>
-            </h1>
+            <div class="sidebar-brand">
+
+                <div class="brand-logo">
+                    <span>⏰</span>
+                </div>
+
+                <h1 id="sidebarTitle">
+                    Smart<span>Reminder</span>
+                </h1>
+
+            </div>
 
 
             <nav>
@@ -79,9 +162,37 @@
                 </div>
 
 
-                <button class="notification" onclick="showNotifications()" title="Notifications">
-                    🔔
-                </button>
+                <div class="header-actions">
+
+                    <button class="notification" onclick="showNotifications()" title="Notifications">
+                        🔔
+                    </button>
+
+
+                    <div class="profile-menu">
+
+                        <button class="profile-arrow" onclick="toggleProfileMenu()" title="Profile">
+                            <span id="profileInitial">U</span> ▾
+                        </button>
+
+
+                        <div id="profileDropdown" class="profile-dropdown">
+
+                            <p class="profile-username">
+                                Signed in as <strong id="profileUsernameLabel">-</strong>
+                            </p>
+
+                            <button onclick="openChangeUsername()">Change Username</button>
+
+                            <button onclick="openChangePassword()">Change Password</button>
+
+                            <button class="logout-btn" onclick="logoutUser()">Log Out</button>
+
+                        </div>
+
+                    </div>
+
+                </div>
 
             </header>
 
@@ -301,6 +412,122 @@
 
                 </button>
 
+
+            </div>
+
+
+        </div>
+
+
+    </div>
+
+
+
+    <!-- CHANGE USERNAME POPUP -->
+
+    <div id="usernameModal" class="modal">
+
+
+        <div class="modal-content">
+
+
+            <h2>
+                Change Username
+            </h2>
+
+
+            <label>
+                New Username
+            </label>
+
+            <input
+                type="text"
+                id="newUsernameInput"
+                placeholder="Enter new username"
+            >
+
+
+            <label>
+                Current Password
+            </label>
+
+            <input
+                type="password"
+                id="usernameConfirmPassword"
+                placeholder="Confirm your password"
+            >
+
+
+            <p id="usernameChangeError" class="auth-error"></p>
+
+
+            <div class="modal-buttons">
+
+                <button onclick="closeChangeUsername()">
+                    Cancel
+                </button>
+
+                <button class="save" onclick="submitChangeUsername()">
+                    Save
+                </button>
+
+            </div>
+
+
+        </div>
+
+
+    </div>
+
+
+
+    <!-- CHANGE PASSWORD POPUP -->
+
+    <div id="passwordModal" class="modal">
+
+
+        <div class="modal-content">
+
+
+            <h2>
+                Change Password
+            </h2>
+
+
+            <label>
+                Current Password
+            </label>
+
+            <input
+                type="password"
+                id="currentPasswordInput"
+                placeholder="Current password"
+            >
+
+
+            <label>
+                New Password
+            </label>
+
+            <input
+                type="password"
+                id="newPasswordInput"
+                placeholder="At least 6 characters"
+            >
+
+
+            <p id="passwordChangeError" class="auth-error"></p>
+
+
+            <div class="modal-buttons">
+
+                <button onclick="closeChangePassword()">
+                    Cancel
+                </button>
+
+                <button class="save" onclick="submitChangePassword()">
+                    Save
+                </button>
 
             </div>
 

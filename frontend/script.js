@@ -7,21 +7,60 @@ let currentView = "dashboard";
 
  const API = "https://smartreminder-zllc.onrender.com";
 
+const AUTH_KEY = "smartReminderUser";
+
 
 // ==========================================
 // INITIALIZE
 // ==========================================
 
 document.addEventListener("DOMContentLoaded", async () => {
-    await loadTasks();
-    showDashboard();
+
+    const loggedInUser = getLoggedInUser();
+
+    if (loggedInUser) {
+
+        showAppScreen(loggedInUser);
+
+        await loadTasks();
+
+        showDashboard();
+
+    }
+    else {
+
+        showAuthScreen();
+
+        showLogin();
+    }
 
     // Close modal when clicking outside it
     window.addEventListener("click", function (event) {
+
         const modal = document.getElementById("taskModal");
+        const usernameModal = document.getElementById("usernameModal");
+        const passwordModal = document.getElementById("passwordModal");
 
         if (event.target === modal) {
             closeAddTask();
+        }
+
+        if (event.target === usernameModal) {
+            closeChangeUsername();
+        }
+
+        if (event.target === passwordModal) {
+            closeChangePassword();
+        }
+    });
+
+    // Close profile dropdown when clicking outside it
+    document.addEventListener("click", function (event) {
+
+        const menu = document.querySelector(".profile-menu");
+
+        if (menu && !menu.contains(event.target)) {
+            closeProfileMenu();
         }
     });
 });
@@ -1117,3 +1156,490 @@ function toggleTheme() {
 document.addEventListener("DOMContentLoaded", function () {
     applyTheme();
 });
+
+
+/* =========================================================
+   AUTH - SESSION HELPERS
+   ========================================================= */
+
+function getLoggedInUser() {
+
+    return localStorage.getItem(AUTH_KEY);
+}
+
+
+function showAuthScreen() {
+
+    document.getElementById("authScreen").style.display = "flex";
+
+    document.getElementById("appScreen").style.display = "none";
+}
+
+
+function showAppScreen(username) {
+
+    document.getElementById("authScreen").style.display = "none";
+
+    document.getElementById("appScreen").style.display = "flex";
+
+    // Sidebar shows only the logo once logged in, no text
+    const sidebarTitle =
+        document.getElementById("sidebarTitle");
+
+    if (sidebarTitle) {
+        sidebarTitle.style.display = "none";
+    }
+
+    updateProfileDisplay(username);
+}
+
+
+function updateProfileDisplay(username) {
+
+    const label =
+        document.getElementById("profileUsernameLabel");
+
+    const initial =
+        document.getElementById("profileInitial");
+
+    if (label) {
+        label.textContent = username;
+    }
+
+    if (initial && username) {
+        initial.textContent =
+            username.charAt(0).toUpperCase();
+    }
+}
+
+
+function showLogin() {
+
+    document.getElementById("loginForm").style.display = "block";
+
+    document.getElementById("signupForm").style.display = "none";
+
+    document.getElementById("loginError").textContent = "";
+}
+
+
+function showSignup() {
+
+    document.getElementById("loginForm").style.display = "none";
+
+    document.getElementById("signupForm").style.display = "block";
+
+    document.getElementById("signupError").textContent = "";
+}
+
+
+/* =========================================================
+   AUTH - LOGIN
+   ========================================================= */
+
+async function loginUser() {
+
+    const username =
+        document.getElementById("loginUsername").value.trim();
+
+    const password =
+        document.getElementById("loginPassword").value;
+
+    const errorEl =
+        document.getElementById("loginError");
+
+    errorEl.textContent = "";
+
+
+    if (!username || !password) {
+
+        errorEl.textContent =
+            "Please enter your username and password.";
+
+        return;
+    }
+
+
+    try {
+
+        const response =
+            await fetch(`${API}/login`, {
+
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+
+                body:
+                    new URLSearchParams({
+                        username: username,
+                        password: password
+                    })
+            });
+
+        const result =
+            await response.json();
+
+        if (!result.success) {
+
+            errorEl.textContent =
+                result.message || "Could not log in.";
+
+            return;
+        }
+
+        localStorage.setItem(AUTH_KEY, result.username);
+
+        document.getElementById("loginPassword").value = "";
+
+        showAppScreen(result.username);
+
+        await loadTasks();
+
+        showDashboard();
+
+    }
+    catch (error) {
+
+        console.error("Login error:", error);
+
+        errorEl.textContent =
+            "Could not connect to the server.";
+    }
+}
+
+
+/* =========================================================
+   AUTH - SIGNUP
+   ========================================================= */
+
+async function signupUser() {
+
+    const username =
+        document.getElementById("signupUsername").value.trim();
+
+    const password =
+        document.getElementById("signupPassword").value;
+
+    const confirmPassword =
+        document.getElementById("signupConfirmPassword").value;
+
+    const errorEl =
+        document.getElementById("signupError");
+
+    errorEl.textContent = "";
+
+
+    if (!username || !password || !confirmPassword) {
+
+        errorEl.textContent =
+            "Please fill all fields.";
+
+        return;
+    }
+
+    if (password.length < 6) {
+
+        errorEl.textContent =
+            "Password must be at least 6 characters.";
+
+        return;
+    }
+
+    if (password !== confirmPassword) {
+
+        errorEl.textContent =
+            "Passwords do not match.";
+
+        return;
+    }
+
+
+    try {
+
+        const response =
+            await fetch(`${API}/signup`, {
+
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+
+                body:
+                    new URLSearchParams({
+                        username: username,
+                        password: password
+                    })
+            });
+
+        const result =
+            await response.json();
+
+        if (!result.success) {
+
+            errorEl.textContent =
+                result.message || "Could not create account.";
+
+            return;
+        }
+
+        localStorage.setItem(AUTH_KEY, result.username);
+
+        showAppScreen(result.username);
+
+        await loadTasks();
+
+        showDashboard();
+
+    }
+    catch (error) {
+
+        console.error("Signup error:", error);
+
+        errorEl.textContent =
+            "Could not connect to the server.";
+    }
+}
+
+
+/* =========================================================
+   AUTH - LOGOUT
+   ========================================================= */
+
+function logoutUser() {
+
+    localStorage.removeItem(AUTH_KEY);
+
+    closeProfileMenu();
+
+    document.getElementById("loginUsername").value = "";
+    document.getElementById("loginPassword").value = "";
+
+    document.getElementById("sidebarTitle").style.display = "block";
+
+    showAuthScreen();
+
+    showLogin();
+}
+
+
+/* =========================================================
+   PROFILE DROPDOWN
+   ========================================================= */
+
+function toggleProfileMenu() {
+
+    document.getElementById("profileDropdown")
+        .classList.toggle("open");
+}
+
+
+function closeProfileMenu() {
+
+    const dropdown =
+        document.getElementById("profileDropdown");
+
+    if (dropdown) {
+        dropdown.classList.remove("open");
+    }
+}
+
+
+/* =========================================================
+   CHANGE USERNAME
+   ========================================================= */
+
+function openChangeUsername() {
+
+    closeProfileMenu();
+
+    document.getElementById("usernameModal").style.display = "flex";
+}
+
+
+function closeChangeUsername() {
+
+    document.getElementById("usernameModal").style.display = "none";
+
+    document.getElementById("newUsernameInput").value = "";
+    document.getElementById("usernameConfirmPassword").value = "";
+    document.getElementById("usernameChangeError").textContent = "";
+}
+
+
+async function submitChangeUsername() {
+
+    const currentUsername = getLoggedInUser();
+
+    const newUsername =
+        document.getElementById("newUsernameInput").value.trim();
+
+    const password =
+        document.getElementById("usernameConfirmPassword").value;
+
+    const errorEl =
+        document.getElementById("usernameChangeError");
+
+    errorEl.textContent = "";
+
+
+    if (!newUsername || !password) {
+
+        errorEl.textContent =
+            "Please fill all fields.";
+
+        return;
+    }
+
+
+    try {
+
+        const response =
+            await fetch(`${API}/update-username`, {
+
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+
+                body:
+                    new URLSearchParams({
+                        currentUsername: currentUsername,
+                        newUsername: newUsername,
+                        password: password
+                    })
+            });
+
+        const result =
+            await response.json();
+
+        if (!result.success) {
+
+            errorEl.textContent =
+                result.message || "Could not update username.";
+
+            return;
+        }
+
+        localStorage.setItem(AUTH_KEY, result.username);
+
+        updateProfileDisplay(result.username);
+
+        closeChangeUsername();
+
+    }
+    catch (error) {
+
+        console.error("Change username error:", error);
+
+        errorEl.textContent =
+            "Could not connect to the server.";
+    }
+}
+
+
+/* =========================================================
+   CHANGE PASSWORD
+   ========================================================= */
+
+function openChangePassword() {
+
+    closeProfileMenu();
+
+    document.getElementById("passwordModal").style.display = "flex";
+}
+
+
+function closeChangePassword() {
+
+    document.getElementById("passwordModal").style.display = "none";
+
+    document.getElementById("currentPasswordInput").value = "";
+    document.getElementById("newPasswordInput").value = "";
+    document.getElementById("passwordChangeError").textContent = "";
+}
+
+
+async function submitChangePassword() {
+
+    const username = getLoggedInUser();
+
+    const currentPassword =
+        document.getElementById("currentPasswordInput").value;
+
+    const newPassword =
+        document.getElementById("newPasswordInput").value;
+
+    const errorEl =
+        document.getElementById("passwordChangeError");
+
+    errorEl.textContent = "";
+
+
+    if (!currentPassword || !newPassword) {
+
+        errorEl.textContent =
+            "Please fill all fields.";
+
+        return;
+    }
+
+    if (newPassword.length < 6) {
+
+        errorEl.textContent =
+            "New password must be at least 6 characters.";
+
+        return;
+    }
+
+
+    try {
+
+        const response =
+            await fetch(`${API}/update-password`, {
+
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+
+                body:
+                    new URLSearchParams({
+                        username: username,
+                        currentPassword: currentPassword,
+                        newPassword: newPassword
+                    })
+            });
+
+        const result =
+            await response.json();
+
+        if (!result.success) {
+
+            errorEl.textContent =
+                result.message || "Could not update password.";
+
+            return;
+        }
+
+        closeChangePassword();
+
+        alert("Password updated successfully.");
+
+    }
+    catch (error) {
+
+        console.error("Change password error:", error);
+
+        errorEl.textContent =
+            "Could not connect to the server.";
+    }
+}
