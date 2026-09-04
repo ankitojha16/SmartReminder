@@ -56,10 +56,6 @@
                 <button class="auth-submit" onclick="loginUser()">Log In</button>
 
                 <p class="auth-switch">
-                    <a onclick="openForgotPassword()">Forgot password?</a>
-                </p>
-
-                <p class="auth-switch">
                     Don't have an account? <a onclick="showSignup()">Sign up</a>
                 </p>
 
@@ -80,38 +76,6 @@
 
                 <label>Confirm Password</label>
                 <input type="password" id="signupConfirmPassword" placeholder="Repeat your password">
-
-                <label>Favourite Colour</label>
-                <select id="signupFavColor">
-                    <option value="">Select a colour</option>
-                    <option value="Red">Red</option>
-                    <option value="Blue">Blue</option>
-                    <option value="Green">Green</option>
-                    <option value="Yellow">Yellow</option>
-                    <option value="Purple">Purple</option>
-                    <option value="Orange">Orange</option>
-                    <option value="Pink">Pink</option>
-                    <option value="Black">Black</option>
-                    <option value="White">White</option>
-                    <option value="Brown">Brown</option>
-                </select>
-
-                <label>Favourite Fruit</label>
-                <select id="signupFavFruit">
-                    <option value="">Select a fruit</option>
-                    <option value="Apple">Apple</option>
-                    <option value="Banana">Banana</option>
-                    <option value="Mango">Mango</option>
-                    <option value="Orange">Orange</option>
-                    <option value="Grape">Grape</option>
-                    <option value="Strawberry">Strawberry</option>
-                    <option value="Pineapple">Pineapple</option>
-                    <option value="Watermelon">Watermelon</option>
-                    <option value="Papaya">Papaya</option>
-                    <option value="Kiwi">Kiwi</option>
-                </select>
-
-                <p class="auth-hint">We'll use these to help you reset your password if you forget it.</p>
 
                 <p id="signupError" class="auth-error"></p>
 
@@ -187,8 +151,8 @@
 
                 <div>
 
-                    <h2 id="greetingText">
-                        Welcome 👋
+                    <h2>
+                        Good Morning 👋
                     </h2>
 
                     <p>
@@ -199,10 +163,6 @@
 
 
                 <div class="header-actions">
-
-                    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle day/night theme">
-                        🌙
-                    </button>
 
                     <button class="notification" onclick="showNotifications()" title="Notifications">
                         🔔
@@ -225,8 +185,6 @@
                             <button onclick="openChangeUsername()">Change Username</button>
 
                             <button onclick="openChangePassword()">Change Password</button>
-
-                            <button onclick="openSecurityModal()">Update Security Questions</button>
 
                             <button class="logout-btn" onclick="logoutUser()">Log Out</button>
 
@@ -334,7 +292,7 @@
 
 
 
-            <!-- UPCOMING REMINDERS / ALL TASKS / COMPLETED -->
+            <!-- UPCOMING REMINDERS -->
 
             <section class="upcoming">
 
@@ -361,29 +319,6 @@
                     <p class="empty">
                         No reminders yet.
                     </p>
-
-                </div>
-
-
-                <!-- CALENDAR VIEW (shown instead of taskList on the Calendar page) -->
-
-                <div id="calendarView" style="display:none;">
-
-                    <div class="calendar-header">
-
-                        <button id="prevMonthBtn" onclick="changeCalendarMonth(-1)">← Prev</button>
-
-                        <h3 id="calendarMonthLabel">Month Year</h3>
-
-                        <button id="nextMonthBtn" onclick="changeCalendarMonth(1)">Next →</button>
-
-                    </div>
-
-                    <div class="calendar-grid" id="calendarGrid"></div>
-
-                    <div class="calendar-day-details" id="calendarDayDetails">
-                        <p class="empty">Click a date to see its reminders.</p>
-                    </div>
 
                 </div>
 
@@ -591,202 +526,6 @@
                 </button>
 
                 <button class="save" onclick="submitChangePassword()">
-                    Save
-                </button>
-
-            </div>
-
-
-        </div>
-
-
-    </div>
-
-
-
-    <!-- FORGOT PASSWORD POPUP (shown from the login screen) -->
-
-    <div id="forgotModal" class="modal">
-
-
-        <div class="modal-content">
-
-
-            <h2>
-                Reset Your Password
-            </h2>
-
-            <p class="auth-hint">Answer your security questions to set a new password.</p>
-
-
-            <label>
-                Username
-            </label>
-
-            <input
-                type="text"
-                id="forgotUsername"
-                placeholder="Your username"
-            >
-
-
-            <label>
-                Favourite Colour
-            </label>
-
-            <select id="forgotFavColor">
-                <option value="">Select a colour</option>
-                <option value="Red">Red</option>
-                <option value="Blue">Blue</option>
-                <option value="Green">Green</option>
-                <option value="Yellow">Yellow</option>
-                <option value="Purple">Purple</option>
-                <option value="Orange">Orange</option>
-                <option value="Pink">Pink</option>
-                <option value="Black">Black</option>
-                <option value="White">White</option>
-                <option value="Brown">Brown</option>
-            </select>
-
-
-            <label>
-                Favourite Fruit
-            </label>
-
-            <select id="forgotFavFruit">
-                <option value="">Select a fruit</option>
-                <option value="Apple">Apple</option>
-                <option value="Banana">Banana</option>
-                <option value="Mango">Mango</option>
-                <option value="Orange">Orange</option>
-                <option value="Grape">Grape</option>
-                <option value="Strawberry">Strawberry</option>
-                <option value="Pineapple">Pineapple</option>
-                <option value="Watermelon">Watermelon</option>
-                <option value="Papaya">Papaya</option>
-                <option value="Kiwi">Kiwi</option>
-            </select>
-
-
-            <label>
-                New Password
-            </label>
-
-            <input
-                type="password"
-                id="forgotNewPassword"
-                placeholder="At least 6 characters"
-            >
-
-
-            <label>
-                Confirm New Password
-            </label>
-
-            <input
-                type="password"
-                id="forgotConfirmPassword"
-                placeholder="Repeat new password"
-            >
-
-
-            <p id="forgotError" class="auth-error"></p>
-
-
-            <div class="modal-buttons">
-
-                <button onclick="closeForgotPassword()">
-                    Cancel
-                </button>
-
-                <button class="save" onclick="submitForgotPassword()">
-                    Reset Password
-                </button>
-
-            </div>
-
-
-        </div>
-
-
-    </div>
-
-
-
-    <!-- UPDATE SECURITY QUESTIONS POPUP (while logged in) -->
-
-    <div id="securityModal" class="modal">
-
-
-        <div class="modal-content">
-
-
-            <h2>
-                Update Security Questions
-            </h2>
-
-            <p class="auth-hint">These are used to reset your password if you ever forget it.</p>
-
-
-            <label>
-                Current Password
-            </label>
-
-            <input
-                type="password"
-                id="securityCurrentPassword"
-                placeholder="Confirm your password"
-            >
-
-
-            <label>
-                Favourite Colour
-            </label>
-
-            <select id="securityFavColor">
-                <option value="">Select a colour</option>
-                <option value="Red">Red</option>
-                <option value="Blue">Blue</option>
-                <option value="Green">Green</option>
-                <option value="Yellow">Yellow</option>
-                <option value="Purple">Purple</option>
-                <option value="Orange">Orange</option>
-                <option value="Pink">Pink</option>
-                <option value="Black">Black</option>
-                <option value="White">White</option>
-                <option value="Brown">Brown</option>
-            </select>
-
-
-            <label>
-                Favourite Fruit
-            </label>
-
-            <select id="securityFavFruit">
-                <option value="">Select a fruit</option>
-                <option value="Apple">Apple</option>
-                <option value="Banana">Banana</option>
-                <option value="Mango">Mango</option>
-                <option value="Orange">Orange</option>
-                <option value="Grape">Grape</option>
-                <option value="Strawberry">Strawberry</option>
-                <option value="Pineapple">Pineapple</option>
-                <option value="Watermelon">Watermelon</option>
-                <option value="Papaya">Papaya</option>
-                <option value="Kiwi">Kiwi</option>
-            </select>
-
-
-            <p id="securityChangeError" class="auth-error"></p>
-
-
-            <div class="modal-buttons">
-
-                <button onclick="closeSecurityModal()">
-                    Cancel
-                </button>
-
-                <button class="save" onclick="submitSecurityUpdate()">
                     Save
                 </button>
 

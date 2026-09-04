@@ -741,7 +741,10 @@ string updateUsername(const string& body) {
 
 
 // ============================================================
-// UPDATE PASSWORD (while logged in, knows current password)
+// UPDATE PASSWORD (while logged in, verified with the security
+// questions that were set at signup - same check as the "forgot
+// password" flow, since security questions exist only to gate
+// changing/resetting a password and are never editable later)
 // ============================================================
 
 string updatePassword(const string& body) {
@@ -749,12 +752,22 @@ string updatePassword(const string& body) {
     string username =
         getValue(body, "username");
 
-    string currentPassword =
-        getValue(body, "currentPassword");
+    string favColor =
+        getValue(body, "favColor");
+
+    string favFruit =
+        getValue(body, "favFruit");
 
     string newPassword =
         getValue(body, "newPassword");
 
+
+    if (favColor.empty() || favFruit.empty()) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"Please answer your security questions.\"}";
+    }
 
     if (newPassword.length() < 6) {
 
@@ -772,11 +785,17 @@ string updatePassword(const string& body) {
             "\"message\":\"User not found.\"}";
     }
 
-    if (user->passwordHash != hashPassword(currentPassword)) {
+    bool colorMatches =
+        toLower(user->favColor) == toLower(favColor);
+
+    bool fruitMatches =
+        toLower(user->favFruit) == toLower(favFruit);
+
+    if (!colorMatches || !fruitMatches) {
 
         return
             "{\"success\":false,"
-            "\"message\":\"Current password is incorrect.\"}";
+            "\"message\":\"Your favourite colour and fruit did not match our records.\"}";
     }
 
     user->passwordHash = hashPassword(newPassword);
@@ -851,59 +870,6 @@ string forgotPasswordReset(const string& body) {
     return
         "{\"success\":true,"
         "\"message\":\"Password reset. You can log in now.\"}";
-}
-
-
-// ============================================================
-// UPDATE SECURITY QUESTIONS (fav colour / fav fruit)
-// ============================================================
-
-string updateSecurity(const string& body) {
-
-    string username =
-        getValue(body, "username");
-
-    string currentPassword =
-        getValue(body, "currentPassword");
-
-    string favColor =
-        getValue(body, "favColor");
-
-    string favFruit =
-        getValue(body, "favFruit");
-
-
-    if (favColor.empty() || favFruit.empty()) {
-
-        return
-            "{\"success\":false,"
-            "\"message\":\"Please choose your favourite colour and fruit.\"}";
-    }
-
-    User* user = findUser(username);
-
-    if (!user) {
-
-        return
-            "{\"success\":false,"
-            "\"message\":\"User not found.\"}";
-    }
-
-    if (user->passwordHash != hashPassword(currentPassword)) {
-
-        return
-            "{\"success\":false,"
-            "\"message\":\"Current password is incorrect.\"}";
-    }
-
-    user->favColor = sanitizeField(toLower(favColor));
-    user->favFruit = sanitizeField(toLower(favFruit));
-
-    saveUsers();
-
-    return
-        "{\"success\":true,"
-        "\"message\":\"Security questions updated.\"}";
 }
 
 
@@ -1445,24 +1411,6 @@ if (request.find("GET / HTTP") == 0) {
 
         string response =
             forgotPasswordReset(body);
-
-        sendResponse(
-            client,
-            response
-        );
-
-        return;
-    }
-
-
-    // UPDATE SECURITY QUESTIONS
-
-    if (
-        request.find("POST /update-security") == 0
-    ) {
-
-        string response =
-            updateSecurity(body);
 
         sendResponse(
             client,
