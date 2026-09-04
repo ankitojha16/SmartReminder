@@ -7,7 +7,6 @@
 #include <cstring>
 #include <cctype>
 #include <functional>
-#include <cstdio>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -16,6 +15,10 @@
 #include "Task.h"
 #include <fstream>
 #include <iterator>
+#include <cstdio>
+#include <sys/stat.h>
+#include <cerrno>
+#include <libpq-fe.h>
 
 using namespace std;
 
@@ -204,12 +207,19 @@ string sanitizeField(string value) {
 }
 
 
-User* findUser(const string& username) {
+// ============================================================
+// PERSISTENT DATA STORAGE - SUPABASE POSTGRESQL
+// ============================================================
+// Render's Free filesystem is temporary, so users/tasks/schedule are
+// stored in Supabase PostgreSQL instead of users.txt/tasks.txt/schedule.txt.
+// DATABASE_URL is supplied through the Render environment variables.
 
+PGconn* database = nullptr;
+
+User* findUser(const string& username) {
     string target = toLower(username);
 
     for (User& user : allUsers) {
-
         if (toLower(user.username) == target) {
             return &user;
         }
@@ -218,293 +228,359 @@ User* findUser(const string& username) {
     return nullptr;
 }
 
+bool connectDatabase() {
+    const char* url = getenv("DATABASE_URL");
+
+    if (url == nullptr || *url == '\0') {
+        cerr << "ERROR: DATABASE_URL environment variable is missing." << endl;
+        return false;
+    }
+
+    database = PQconnectdb(url);
+
+    if (PQstatus(database) != CONNECTION_OK) {
+        cerr << "ERROR: PostgreSQL connection failed: "
+             << PQerrorMessage(database) << endl;
+        PQfinish(database);
+        database = nullptr;
+        return false;
+    }
+
+    cout << "PostgreSQL database connected successfully." << endl;
+    return true;
+}
+
+bool executeSQL(const string& sql) {
+    if (database == nullptr) {
+        return false;
+    }
+
+    PGresult* result = PQexec(database, sql.c_str());
+    ExecStatusType status = PQresultStatus(result);
+    bool ok = (status == PGRES_COMMAND_OK || status == PGRES_TUPLES_OK);
+
+    if (!ok) {
+        cerr << "PostgreSQL error: " << PQerrorMessage(database) << endl;
+    }
+
+    PQclear(result);
+    return ok;
+}
+
+PGresult* executeParams(
+    const string& sql,
+    const vector<string>& values
+) {
+    if (database == nullptr) {
+        return nullptr;
+    }
+
+    vector<const char*> params;
+    params.reserve(values.size());
+
+    for (const string& value : values) {
+        params.push_back(value.c_str());
+    }
+
+    return PQexecParams(
+        database,
+        sql.c_str(),
+        static_cast<int>(params.size()),
+        nullptr,
+        params.empty() ? nullptr : params.data(),
+        nullptr,
+        nullptr,
+        0
+    );
+}
+
+bool executeParamsCommand(
+    const string& sql,
+    const vector<string>& values
+) {
+    PGresult* result = executeParams(sql, values);
+
+    if (result == nullptr) {
+        return false;
+    }
+
+    bool ok = PQresultStatus(result) == PGRES_COMMAND_OK;
+
+    if (!ok) {
+        cerr << "PostgreSQL error: " << PQerrorMessage(database) << endl;
+    }
+
+    PQclear(result);
+    return ok;
+}
+
+string dbValue(PGresult* result, int row, int column) {
+    if (PQgetisnull(result, row, column)) {
+        return "";
+    }
+    return PQgetvalue(result, row, column);
+}
+
+bool databaseHasRows(const string& table) {
+    string sql = "SELECT COUNT(*) FROM " + table;
+    PGresult* result = PQexec(database, sql.c_str());
+
+    if (result == nullptr || PQresultStatus(result) != PGRES_TUPLES_OK) {
+        if (result != nullptr) PQclear(result);
+        return false;
+    }
+
+    bool hasRows = atoi(PQgetvalue(result, 0, 0)) > 0;
+    PQclear(result);
+    return hasRows;
+}
 
 void loadUsers() {
-
     allUsers.clear();
 
-    ifstream file("users.txt");
+    PGresult* result = PQexec(
+        database,
+        "SELECT username, password_hash, fav_color, fav_fruit "
+        "FROM users ORDER BY id"
+    );
 
-    if (!file.is_open()) {
+    if (result == nullptr || PQresultStatus(result) != PGRES_TUPLES_OK) {
+        cerr << "ERROR loading users: " << PQerrorMessage(database) << endl;
+        if (result != nullptr) PQclear(result);
         return;
     }
 
-    string line;
+    int rows = PQntuples(result);
 
-    while (getline(file, line)) {
-
-        if (line.empty()) {
-            continue;
-        }
-
-        vector<string> parts;
-
-        size_t pos = 0;
-
-        while (true) {
-
-            size_t sep = line.find('|', pos);
-
-            if (sep == string::npos) {
-
-                parts.push_back(line.substr(pos));
-                break;
-            }
-
-            parts.push_back(line.substr(pos, sep - pos));
-
-            pos = sep + 1;
-        }
-
-        if (parts.size() < 2) {
-            continue;
-        }
-
+    for (int i = 0; i < rows; i++) {
         User user;
-
-        user.username = parts[0];
-        user.passwordHash = parts[1];
-
-        // Older users.txt files (before security questions were
-        // added) only have 2 fields. Default the rest so old
-        // accounts still load instead of being skipped.
-        user.favColor = parts.size() > 2 ? parts[2] : "";
-        user.favFruit = parts.size() > 3 ? parts[3] : "";
-
+        user.username = dbValue(result, i, 0);
+        user.passwordHash = dbValue(result, i, 1);
+        user.favColor = dbValue(result, i, 2);
+        user.favFruit = dbValue(result, i, 3);
         allUsers.push_back(user);
     }
+
+    PQclear(result);
+    cout << "Loaded " << allUsers.size() << " users from database." << endl;
 }
 
-
 void saveUsers() {
+    if (database == nullptr) return;
 
-    ofstream file("users.txt", ios::trunc);
+    if (!executeSQL("BEGIN")) return;
+
+    if (!executeSQL("DELETE FROM users")) {
+        executeSQL("ROLLBACK");
+        return;
+    }
+
+    bool ok = true;
 
     for (const User& user : allUsers) {
+        ok = executeParamsCommand(
+            "INSERT INTO users "
+            "(username, password_hash, fav_color, fav_fruit) "
+            "VALUES ($1, $2, $3, $4)",
+            {user.username, user.passwordHash, user.favColor, user.favFruit}
+        );
 
-        file << user.username
-             << "|"
-             << user.passwordHash
-             << "|"
-             << user.favColor
-             << "|"
-             << user.favFruit
-             << "\n";
+        if (!ok) break;
+    }
+
+    if (ok) {
+        executeSQL("COMMIT");
+    } else {
+        executeSQL("ROLLBACK");
     }
 }
 
-
 bool usernameTaken(const string& username) {
-
     return findUser(username) != nullptr;
 }
-
 
 // ============================================================
 // TASK PERSISTENCE
 // ============================================================
 
 void loadTasks() {
-
     allTasks.clear();
+    priorityQueue = TaskPriorityQueue();
 
-    ifstream file("tasks.txt");
+    PGresult* result = PQexec(
+        database,
+        "SELECT id, username, name, date, time, priority, completed "
+        "FROM tasks ORDER BY id"
+    );
 
-    if (!file.is_open()) {
+    if (result == nullptr || PQresultStatus(result) != PGRES_TUPLES_OK) {
+        cerr << "ERROR loading tasks: " << PQerrorMessage(database) << endl;
+        if (result != nullptr) PQclear(result);
         return;
     }
 
-    string line;
-
+    int rows = PQntuples(result);
     int highestID = 0;
 
-    while (getline(file, line)) {
-
-        if (line.empty()) {
-            continue;
-        }
-
-        vector<string> parts;
-
-        size_t pos = 0;
-
-        while (true) {
-
-            size_t sep = line.find('|', pos);
-
-            if (sep == string::npos) {
-
-                parts.push_back(line.substr(pos));
-                break;
-            }
-
-            parts.push_back(line.substr(pos, sep - pos));
-
-            pos = sep + 1;
-        }
-
-        // id|username|name|date|time|priority|completed
-        if (parts.size() < 7) {
-            continue;
-        }
-
+    for (int i = 0; i < rows; i++) {
         Task task;
-
-        task.id = atoi(parts[0].c_str());
-        task.username = parts[1];
-        task.name = parts[2];
-        task.date = parts[3];
-        task.time = parts[4];
-        task.priority = atoi(parts[5].c_str());
-        task.completed = (parts[6] == "1");
+        task.id = atoi(dbValue(result, i, 0).c_str());
+        task.username = dbValue(result, i, 1);
+        task.name = dbValue(result, i, 2);
+        task.date = dbValue(result, i, 3);
+        task.time = dbValue(result, i, 4);
+        task.priority = atoi(dbValue(result, i, 5).c_str());
+        task.completed = (dbValue(result, i, 6) == "t" ||
+                          dbValue(result, i, 6) == "true" ||
+                          dbValue(result, i, 6) == "1");
 
         allTasks.push_back(task);
-
         priorityQueue.push(task);
 
-        if (task.id > highestID) {
-            highestID = task.id;
-        }
+        if (task.id > highestID) highestID = task.id;
     }
 
     nextID = highestID + 1;
-}
+    PQclear(result);
 
+    cout << "Loaded " << allTasks.size() << " reminders from database." << endl;
+}
 
 void saveTasks() {
+    if (database == nullptr) return;
 
-    ofstream file("tasks.txt", ios::trunc);
+    if (!executeSQL("BEGIN")) return;
+
+    if (!executeSQL("DELETE FROM tasks")) {
+        executeSQL("ROLLBACK");
+        return;
+    }
+
+    bool ok = true;
 
     for (const Task& task : allTasks) {
+        ok = executeParamsCommand(
+            "INSERT INTO tasks "
+            "(id, username, name, date, time, priority, completed) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            {
+                to_string(task.id),
+                task.username,
+                task.name,
+                task.date,
+                task.time,
+                to_string(task.priority),
+                task.completed ? "true" : "false"
+            }
+        );
 
-        file << task.id << "|"
-             << task.username << "|"
-             << task.name << "|"
-             << task.date << "|"
-             << task.time << "|"
-             << task.priority << "|"
-             << (task.completed ? "1" : "0")
-             << "\n";
+        if (!ok) break;
+    }
+
+    if (ok) {
+        executeSQL("COMMIT");
+    } else {
+        executeSQL("ROLLBACK");
     }
 }
-
 
 // ============================================================
 // DAILY SCHEDULE (kept completely separate from reminders)
 // ============================================================
-// A schedule item always belongs to a day of the week ("mon"
-// .. "sun"). A "just for today" schedule is simply one weekday
-// populated; a "weekly" schedule is all seven populated. This
-// keeps one simple data model for both cases.
 
 struct ScheduleTask {
-
     int id;
     string username;
-    string day;          // mon, tue, wed, thu, fri, sat, sun
+    string day;
     string name;
     string startTime;
-    string endTime;      // may be empty
+    string endTime;
 };
 
 vector<ScheduleTask> allSchedule;
 int nextScheduleID = 1;
 
-
 bool isValidDay(const string& day) {
-
     static const vector<string> validDays = {
         "mon", "tue", "wed", "thu", "fri", "sat", "sun"
     };
 
-    return find(
-        validDays.begin(),
-        validDays.end(),
-        day
-    ) != validDays.end();
+    return find(validDays.begin(), validDays.end(), day) != validDays.end();
 }
 
-
 void loadSchedule() {
-
     allSchedule.clear();
 
-    ifstream file("schedule.txt");
+    PGresult* result = PQexec(
+        database,
+        "SELECT id, username, day, name, start_time, end_time "
+        "FROM schedule ORDER BY id"
+    );
 
-    if (!file.is_open()) {
+    if (result == nullptr || PQresultStatus(result) != PGRES_TUPLES_OK) {
+        cerr << "ERROR loading schedule: " << PQerrorMessage(database) << endl;
+        if (result != nullptr) PQclear(result);
         return;
     }
 
-    string line;
-
+    int rows = PQntuples(result);
     int highestID = 0;
 
-    while (getline(file, line)) {
-
-        if (line.empty()) {
-            continue;
-        }
-
-        vector<string> parts;
-
-        size_t pos = 0;
-
-        while (true) {
-
-            size_t sep = line.find('|', pos);
-
-            if (sep == string::npos) {
-
-                parts.push_back(line.substr(pos));
-                break;
-            }
-
-            parts.push_back(line.substr(pos, sep - pos));
-
-            pos = sep + 1;
-        }
-
-        // id|username|day|name|startTime|endTime
-        if (parts.size() < 6) {
-            continue;
-        }
-
+    for (int i = 0; i < rows; i++) {
         ScheduleTask item;
-
-        item.id = atoi(parts[0].c_str());
-        item.username = parts[1];
-        item.day = parts[2];
-        item.name = parts[3];
-        item.startTime = parts[4];
-        item.endTime = parts[5];
+        item.id = atoi(dbValue(result, i, 0).c_str());
+        item.username = dbValue(result, i, 1);
+        item.day = dbValue(result, i, 2);
+        item.name = dbValue(result, i, 3);
+        item.startTime = dbValue(result, i, 4);
+        item.endTime = dbValue(result, i, 5);
 
         allSchedule.push_back(item);
-
-        if (item.id > highestID) {
-            highestID = item.id;
-        }
+        if (item.id > highestID) highestID = item.id;
     }
 
     nextScheduleID = highestID + 1;
-}
+    PQclear(result);
 
+    cout << "Loaded " << allSchedule.size() << " schedule items from database." << endl;
+}
 
 void saveSchedule() {
+    if (database == nullptr) return;
 
-    ofstream file("schedule.txt", ios::trunc);
+    if (!executeSQL("BEGIN")) return;
+
+    if (!executeSQL("DELETE FROM schedule")) {
+        executeSQL("ROLLBACK");
+        return;
+    }
+
+    bool ok = true;
 
     for (const ScheduleTask& item : allSchedule) {
+        ok = executeParamsCommand(
+            "INSERT INTO schedule "
+            "(id, username, day, name, start_time, end_time) "
+            "VALUES ($1, $2, $3, $4, $5, $6)",
+            {
+                to_string(item.id),
+                item.username,
+                item.day,
+                item.name,
+                item.startTime,
+                item.endTime
+            }
+        );
 
-        file << item.id << "|"
-             << item.username << "|"
-             << item.day << "|"
-             << item.name << "|"
-             << item.startTime << "|"
-             << item.endTime
-             << "\n";
+        if (!ok) break;
+    }
+
+    if (ok) {
+        executeSQL("COMMIT");
+    } else {
+        executeSQL("ROLLBACK");
     }
 }
-
 
 // ============================================================
 // URL DECODER
@@ -1514,107 +1590,6 @@ string getSchedule(const string& username) {
 
 
 // ============================================================
-// GEMINI AI PROXY
-// ============================================================
-// The Gemini API key is kept on the server in the GEMINI_API_KEY
-// environment variable. Users never see or enter the key.
-
-string shellEscape(const string& value) {
-
-    string result = "'";
-
-    for (char c : value) {
-        if (c == '\'') {
-            result += "'\\''";
-        } else {
-            result += c;
-        }
-    }
-
-    result += "'";
-    return result;
-}
-
-string callGemini(const string& body) {
-
-    string apiKey;
-    const char* envKey = getenv("GEMINI_API_KEY");
-
-    if (envKey) {
-        apiKey = envKey;
-    }
-
-    if (apiKey.empty()) {
-        return "{\"success\":false,\"message\":\"Gemini AI is not configured on the server.\"}";
-    }
-
-    string message = getValue(body, "message");
-
-    if (message.empty()) {
-        return "{\"success\":false,\"message\":\"Message is required.\"}";
-    }
-
-    const string model = "gemini-3.6-flash";
-    const string endpoint =
-        "https://generativelanguage.googleapis.com/v1beta/models/" +
-        model + ":generateContent";
-
-    const string systemPrompt =
-        "You are the built-in assistant inside a reminder and daily-schedule app called Smart Reminder. "
-        "Only help with planning the user's day, building or adjusting their weekly schedule, and turning "
-        "things into reminders. Politely decline anything unrelated to scheduling, reminders, or daily "
-        "planning, and steer the conversation back to those topics. Keep replies short and practical.\n\n"
-        "Whenever the user asks you to build or change a day plan or schedule, end your reply with a "
-        "fenced block exactly like this, with nothing else inside it:\n"
-        "```schedule\n"
-        "[{\"day\":\"mon\",\"name\":\"Wake up\",\"start\":\"06:00\",\"end\":\"06:15\"}]\n"
-        "```\n"
-        "Use lowercase three-letter day codes (mon, tue, wed, thu, fri, sat, sun), 24-hour HH:MM times, "
-        "and one object per task. Only include the day(s) the user actually asked about - don't invent "
-        "extra days. If you are not proposing a schedule, omit the fenced block entirely.";
-
-    string jsonBody =
-        "{\"systemInstruction\":{\"parts\":[{\"text\":\"" +
-        jsonEscape(systemPrompt) +
-        "\"}]},\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"" +
-        jsonEscape(message) +
-        "\"}]}]}";
-
-    string command =
-        "curl -sS --max-time 60 -X POST " +
-        shellEscape(endpoint) +
-        " -H " + shellEscape("Content-Type: application/json") +
-        " -H " + shellEscape("x-goog-api-key: " + apiKey) +
-        " --data-binary " + shellEscape(jsonBody);
-
-    FILE* pipe = popen(command.c_str(), "r");
-
-    if (!pipe) {
-        return "{\"success\":false,\"message\":\"Could not start Gemini service.\"}";
-    }
-
-    string result;
-    char buffer[4096];
-
-    while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-        result += buffer;
-
-        if (result.size() > 1024 * 1024) {
-            break;
-        }
-    }
-
-    int exitCode = pclose(pipe);
-
-    if (exitCode != 0 || result.empty()) {
-        return "{\"success\":false,\"message\":\"Could not reach Gemini service.\"}";
-    }
-
-    return result;
-}
-
-
-// ============================================================
 // HANDLE HTTP REQUEST
 // ============================================================
 
@@ -1799,39 +1774,6 @@ if (request.find("GET /script.js") == 0) {
     return;
 }
 
-
-if (request.find("GET /service-worker.js") == 0) {
-
-    ifstream file("frontend/service-worker.js");
-
-    if (!file.is_open()) {
-        sendResponse(
-            client,
-            "{\"success\":false,\"message\":\"service-worker.js not found\"}"
-        );
-        return;
-    }
-
-    string content(
-        (istreambuf_iterator<char>(file)),
-        istreambuf_iterator<char>()
-    );
-
-    string response =
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: application/javascript\r\n"
-        "Cache-Control: no-cache\r\n"
-        "Service-Worker-Allowed: /\r\n"
-        "Content-Length: " + to_string(content.size()) + "\r\n"
-        "Access-Control-Allow-Origin: *\r\n"
-        "Connection: close\r\n"
-        "\r\n" +
-        content;
-
-    send(client, response.c_str(), response.size(), 0);
-    return;
-}
-
 if (request.find("GET / HTTP") == 0) {
 
     ifstream file("frontend/index.html");
@@ -1861,24 +1803,6 @@ if (request.find("GET / HTTP") == 0) {
     send(client, response.c_str(), response.size(), 0);
     return;
 }
-
-
-    // GEMINI AI PROXY
-
-    if (
-        request.find("POST /ai-chat") == 0
-    ) {
-
-        string response =
-            callGemini(body);
-
-        sendResponse(
-            client,
-            response
-        );
-
-        return;
-    }
 
 
     // SIGNUP
@@ -2170,6 +2094,10 @@ if (request.find("GET / HTTP") == 0) {
 
 int main() {
 
+    if (!connectDatabase()) {
+        return 1;
+    }
+
     loadUsers();
     loadTasks();
     loadSchedule();
@@ -2307,6 +2235,10 @@ serverAddress.sin_port =
 
     close(serverSocket);
 
+    if (database != nullptr) {
+        PQfinish(database);
+        database = nullptr;
+    }
 
     return 0;
 }
