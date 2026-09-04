@@ -3209,12 +3209,7 @@ async function confirmReminderFromSchedule() {
    silently.
    ========================================================= */
 
-const AI_KEY_STORAGE = "smartReminderGeminiKey";
-
-const GEMINI_MODEL = "gemini-3.6-flash";
-
-const GEMINI_ENDPOINT =
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const AI_CHAT_ENDPOINT = "/ai-chat";
 
 const AI_SYSTEM_PROMPT =
     "You are the built-in assistant inside a reminder and daily-schedule app called Smart Reminder. " +
@@ -3229,45 +3224,6 @@ const AI_SYSTEM_PROMPT =
     "Use lowercase three-letter day codes (mon, tue, wed, thu, fri, sat, sun), 24-hour \"HH:MM\" times, " +
     "and one object per task. Only include the day(s) the user actually asked about - don't invent " +
     "extra days. If you are not proposing a schedule, omit the fenced block entirely.";
-
-
-function toggleAiChat() {
-
-    document.getElementById("aiChatPanel").classList.toggle("open");
-}
-
-
-function openAiKeySetup() {
-
-    document.getElementById("aiKeyModal").style.display = "flex";
-
-    const existing = localStorage.getItem(AI_KEY_STORAGE);
-
-    document.getElementById("aiKeyInput").value = existing || "";
-}
-
-
-function closeAiKeySetup() {
-
-    document.getElementById("aiKeyModal").style.display = "none";
-}
-
-
-function saveAiKey() {
-
-    const key =
-        document.getElementById("aiKeyInput").value.trim();
-
-    if (key) {
-        localStorage.setItem(AI_KEY_STORAGE, key);
-    }
-    else {
-        localStorage.removeItem(AI_KEY_STORAGE);
-    }
-
-    closeAiKeySetup();
-}
-
 
 function appendAiMessage(text, who) {
 
@@ -3524,22 +3480,9 @@ async function sendAiChatMessage() {
         return;
     }
 
-    const apiKey =
-        localStorage.getItem(AI_KEY_STORAGE);
-
     appendAiMessage(text, "user");
 
     input.value = "";
-
-    if (!apiKey) {
-
-        appendAiMessage(
-            "Add your Gemini API key first (link below the chat box), then ask me again.",
-            "bot"
-        );
-
-        return;
-    }
 
     const thinkingBubble =
         appendAiMessage("Thinking...", "bot");
@@ -3547,22 +3490,15 @@ async function sendAiChatMessage() {
     try {
 
         const response =
-            await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
+            await fetch(AI_CHAT_ENDPOINT, {
 
                 method: "POST",
 
                 headers: {
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
                 },
 
-                body: JSON.stringify({
-                    systemInstruction: {
-                        parts: [{ text: AI_SYSTEM_PROMPT }]
-                    },
-                    contents: [
-                        { role: "user", parts: [{ text: text }] }
-                    ]
-                })
+                body: "message=" + encodeURIComponent(text)
             });
 
         const data = await response.json();
