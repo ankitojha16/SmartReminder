@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <cctype>
+#include <functional>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -135,6 +137,115 @@ TaskPriorityQueue priorityQueue;
 vector<Task> allTasks;
 
 int nextID = 1;
+
+
+// ============================================================
+// USER ACCOUNT (SIGNUP / LOGIN)
+// ============================================================
+
+struct User {
+
+    string username;
+    string passwordHash;
+};
+
+vector<User> allUsers;
+
+
+// Lowercase helper, used so usernames are compared
+// case-insensitively (e.g. "Alex" and "alex" are the same user)
+
+string toLower(string value) {
+
+    for (char& c : value) {
+
+        c = static_cast<char>(
+            tolower(static_cast<unsigned char>(c))
+        );
+    }
+
+    return value;
+}
+
+
+// NOTE: this is a simple, non-cryptographic hash used only so
+// plain passwords are not stored on disk as-is. It is fine for
+// a learning project, but should not be relied on for real
+// production security.
+
+string hashPassword(const string& password) {
+
+    hash<string> hasher;
+
+    size_t hashed =
+        hasher(password + "smartReminderSalt");
+
+    return to_string(hashed);
+}
+
+
+void loadUsers() {
+
+    allUsers.clear();
+
+    ifstream file("users.txt");
+
+    if (!file.is_open()) {
+        return;
+    }
+
+    string line;
+
+    while (getline(file, line)) {
+
+        size_t separator =
+            line.find('|');
+
+        if (separator == string::npos) {
+            continue;
+        }
+
+        User user;
+
+        user.username =
+            line.substr(0, separator);
+
+        user.passwordHash =
+            line.substr(separator + 1);
+
+        allUsers.push_back(user);
+    }
+}
+
+
+void saveUsers() {
+
+    ofstream file("users.txt", ios::trunc);
+
+    for (const User& user : allUsers) {
+
+        file << user.username
+             << "|"
+             << user.passwordHash
+             << "\n";
+    }
+}
+
+
+bool usernameTaken(const string& username) {
+
+    string target =
+        toLower(username);
+
+    for (const User& user : allUsers) {
+
+        if (toLower(user.username) == target) {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 
 // ============================================================
@@ -286,6 +397,217 @@ void sendResponse(
 
 
 // ============================================================
+// SIGNUP
+// ============================================================
+
+string signupUser(const string& body) {
+
+    string username =
+        getValue(body, "username");
+
+    string password =
+        getValue(body, "password");
+
+
+    if (username.empty() || password.empty()) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"Username and password are required.\"}";
+    }
+
+    if (password.length() < 6) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"Password must be at least 6 characters.\"}";
+    }
+
+    if (usernameTaken(username)) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"That username is already taken. Please choose another.\"}";
+    }
+
+
+    User user;
+
+    user.username = username;
+    user.passwordHash = hashPassword(password);
+
+    allUsers.push_back(user);
+
+    saveUsers();
+
+
+    return
+        "{"
+        "\"success\":true,"
+        "\"message\":\"Account created successfully.\","
+        "\"username\":\"" + jsonEscape(username) + "\""
+        "}";
+}
+
+
+// ============================================================
+// LOGIN
+// ============================================================
+
+string loginUser(const string& body) {
+
+    string username =
+        getValue(body, "username");
+
+    string password =
+        getValue(body, "password");
+
+    string target =
+        toLower(username);
+
+
+    for (User& user : allUsers) {
+
+        if (toLower(user.username) == target) {
+
+            if (user.passwordHash == hashPassword(password)) {
+
+                return
+                    "{"
+                    "\"success\":true,"
+                    "\"message\":\"Login successful.\","
+                    "\"username\":\"" + jsonEscape(user.username) + "\""
+                    "}";
+            }
+
+            return
+                "{\"success\":false,"
+                "\"message\":\"Incorrect password.\"}";
+        }
+    }
+
+    return
+        "{\"success\":false,"
+        "\"message\":\"No account found with that username.\"}";
+}
+
+
+// ============================================================
+// UPDATE USERNAME
+// ============================================================
+
+string updateUsername(const string& body) {
+
+    string currentUsername =
+        getValue(body, "currentUsername");
+
+    string newUsername =
+        getValue(body, "newUsername");
+
+    string password =
+        getValue(body, "password");
+
+
+    if (newUsername.empty()) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"New username cannot be empty.\"}";
+    }
+
+    if (
+        toLower(newUsername) != toLower(currentUsername) &&
+        usernameTaken(newUsername)
+    ) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"That username is already taken.\"}";
+    }
+
+
+    for (User& user : allUsers) {
+
+        if (toLower(user.username) == toLower(currentUsername)) {
+
+            if (user.passwordHash != hashPassword(password)) {
+
+                return
+                    "{\"success\":false,"
+                    "\"message\":\"Incorrect password.\"}";
+            }
+
+            user.username = newUsername;
+
+            saveUsers();
+
+            return
+                "{"
+                "\"success\":true,"
+                "\"message\":\"Username updated.\","
+                "\"username\":\"" + jsonEscape(newUsername) + "\""
+                "}";
+        }
+    }
+
+    return
+        "{\"success\":false,"
+        "\"message\":\"User not found.\"}";
+}
+
+
+// ============================================================
+// UPDATE PASSWORD
+// ============================================================
+
+string updatePassword(const string& body) {
+
+    string username =
+        getValue(body, "username");
+
+    string currentPassword =
+        getValue(body, "currentPassword");
+
+    string newPassword =
+        getValue(body, "newPassword");
+
+
+    if (newPassword.length() < 6) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"New password must be at least 6 characters.\"}";
+    }
+
+
+    for (User& user : allUsers) {
+
+        if (toLower(user.username) == toLower(username)) {
+
+            if (user.passwordHash != hashPassword(currentPassword)) {
+
+                return
+                    "{\"success\":false,"
+                    "\"message\":\"Current password is incorrect.\"}";
+            }
+
+            user.passwordHash = hashPassword(newPassword);
+
+            saveUsers();
+
+            return
+                "{\"success\":true,"
+                "\"message\":\"Password updated.\"}";
+        }
+    }
+
+    return
+        "{\"success\":false,"
+        "\"message\":\"User not found.\"}";
+}
+
+
+// ============================================================
 // PROCESS ADD TASK
 // ============================================================
 
@@ -304,11 +626,20 @@ string addTask(
 
     string priorityText =
         getValue(body, "priority");
-cout << "DEBUG BODY: " << body << endl;
-cout << "DEBUG PRIORITY TEXT: [" << priorityText << "]" << endl;
 
-    int priority =
-        stoi(priorityText);
+    // stoi() throws if priorityText is empty or not a number.
+    // That exception was uncaught, which crashed the ENTIRE
+    // server process (taking down every route, including
+    // signup/login, until Render restarted the container).
+    // Fall back to a default priority instead of crashing.
+    int priority = 1;
+
+    try {
+        priority = stoi(priorityText);
+    }
+    catch (...) {
+        priority = 1;
+    }
 
 
     Task task(
@@ -558,6 +889,21 @@ if (headerEnd != string::npos) {
     body = request.substr(bodyStart);
 }
 
+    // Log exactly what request line came in. If a route ever
+    // falls through to "Unknown request" again, this line in
+    // the Render logs will show precisely what the server saw
+    // (helpful if a proxy/browser sends something unexpected).
+    {
+        size_t firstLineEnd = request.find("\r\n");
+        string firstLine =
+            (firstLineEnd == string::npos)
+                ? request
+                : request.substr(0, firstLineEnd);
+
+        cout << "REQUEST: " << firstLine << endl;
+    }
+
+
     // Handle browser CORS request
 
     if (
@@ -681,6 +1027,78 @@ if (request.find("GET / HTTP") == 0) {
     }
 
 
+    // SIGNUP
+
+    if (
+        request.find("POST /signup") == 0
+    ) {
+
+        string response =
+            signupUser(body);
+
+        sendResponse(
+            client,
+            response
+        );
+
+        return;
+    }
+
+
+    // LOGIN
+
+    if (
+        request.find("POST /login") == 0
+    ) {
+
+        string response =
+            loginUser(body);
+
+        sendResponse(
+            client,
+            response
+        );
+
+        return;
+    }
+
+
+    // UPDATE USERNAME
+
+    if (
+        request.find("POST /update-username") == 0
+    ) {
+
+        string response =
+            updateUsername(body);
+
+        sendResponse(
+            client,
+            response
+        );
+
+        return;
+    }
+
+
+    // UPDATE PASSWORD
+
+    if (
+        request.find("POST /update-password") == 0
+    ) {
+
+        string response =
+            updatePassword(body);
+
+        sendResponse(
+            client,
+            response
+        );
+
+        return;
+    }
+
+
     // ADD TASK
 
     if (
@@ -749,6 +1167,8 @@ if (request.find("GET / HTTP") == 0) {
 // ============================================================
 
 int main() {
+
+    loadUsers();
 
     int serverSocket =
         socket(
