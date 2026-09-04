@@ -40,6 +40,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         const modal = document.getElementById("taskModal");
         const usernameModal = document.getElementById("usernameModal");
         const passwordModal = document.getElementById("passwordModal");
+        const securityModal = document.getElementById("securityModal");
+        const scheduleModal = document.getElementById("scheduleModal");
+        const aiKeyModal = document.getElementById("aiKeyModal");
 
         if (event.target === modal) {
             closeAddTask();
@@ -51,6 +54,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         if (event.target === passwordModal) {
             closeChangePassword();
+        }
+
+        if (event.target === securityModal) {
+            closeChangeSecurity();
+        }
+
+        if (event.target === scheduleModal) {
+            closeDailySchedule();
+        }
+
+        if (event.target === aiKeyModal) {
+            closeAiKeySetup();
         }
     });
 
@@ -74,7 +89,11 @@ async function loadTasks() {
 
     try {
 
-        const response = await fetch(`${API}/tasks`);
+        const username = getLoggedInUser() || "";
+
+        const response = await fetch(
+            `${API}/tasks?username=${encodeURIComponent(username)}`
+        );
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -465,6 +484,9 @@ async function addTask() {
                 body:
                     new URLSearchParams({
 
+                        username:
+                            getLoggedInUser() || "",
+
                         name: name,
 
                         date: date,
@@ -774,7 +796,8 @@ async function completeTask(id) {
 
         const response =
             await fetch(
-                `${API}/complete?id=${encodeURIComponent(id)}`,
+                `${API}/complete?id=${encodeURIComponent(id)}` +
+                `&username=${encodeURIComponent(getLoggedInUser() || "")}`,
                 {
                     method: "POST"
                 }
@@ -1219,6 +1242,8 @@ function showLogin() {
 
     document.getElementById("signupForm").style.display = "none";
 
+    document.getElementById("forgotForm").style.display = "none";
+
     document.getElementById("loginError").textContent = "";
 }
 
@@ -1229,7 +1254,114 @@ function showSignup() {
 
     document.getElementById("signupForm").style.display = "block";
 
+    document.getElementById("forgotForm").style.display = "none";
+
     document.getElementById("signupError").textContent = "";
+}
+
+
+/* =========================================================
+   AUTH - FORGOT PASSWORD
+   ========================================================= */
+
+function openForgotPassword() {
+
+    document.getElementById("loginForm").style.display = "none";
+
+    document.getElementById("signupForm").style.display = "none";
+
+    document.getElementById("forgotForm").style.display = "block";
+
+    document.getElementById("forgotError").textContent = "";
+}
+
+
+async function submitForgotPassword() {
+
+    const username =
+        document.getElementById("forgotUsername").value.trim();
+
+    const favColor =
+        document.getElementById("forgotFavColor").value;
+
+    const favFruit =
+        document.getElementById("forgotFavFruit").value;
+
+    const newPassword =
+        document.getElementById("forgotNewPassword").value;
+
+    const errorEl =
+        document.getElementById("forgotError");
+
+    errorEl.textContent = "";
+
+
+    if (!username || !favColor || !favFruit || !newPassword) {
+
+        errorEl.textContent =
+            "Please fill all fields.";
+
+        return;
+    }
+
+    if (newPassword.length < 6) {
+
+        errorEl.textContent =
+            "New password must be at least 6 characters.";
+
+        return;
+    }
+
+
+    try {
+
+        const response =
+            await fetch(`${API}/forgot-reset`, {
+
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+
+                body:
+                    new URLSearchParams({
+                        username: username,
+                        favColor: favColor,
+                        favFruit: favFruit,
+                        newPassword: newPassword
+                    })
+            });
+
+        const result =
+            await response.json();
+
+        if (!result.success) {
+
+            errorEl.textContent =
+                result.message || "Could not reset password.";
+
+            return;
+        }
+
+        alert("Password reset. You can log in now.");
+
+        document.getElementById("forgotUsername").value = "";
+        document.getElementById("forgotFavColor").value = "";
+        document.getElementById("forgotFavFruit").value = "";
+        document.getElementById("forgotNewPassword").value = "";
+
+        showLogin();
+
+    }
+    catch (error) {
+
+        console.error("Forgot password error:", error);
+
+        errorEl.textContent =
+            "Could not connect to the server.";
+    }
 }
 
 
@@ -1326,6 +1458,12 @@ async function signupUser() {
     const confirmPassword =
         document.getElementById("signupConfirmPassword").value;
 
+    const favColor =
+        document.getElementById("signupFavColor").value;
+
+    const favFruit =
+        document.getElementById("signupFavFruit").value;
+
     const errorEl =
         document.getElementById("signupError");
 
@@ -1336,6 +1474,14 @@ async function signupUser() {
 
         errorEl.textContent =
             "Please fill all fields.";
+
+        return;
+    }
+
+    if (!favColor || !favFruit) {
+
+        errorEl.textContent =
+            "Please select your favourite colour and fruit.";
 
         return;
     }
@@ -1372,7 +1518,9 @@ async function signupUser() {
                 body:
                     new URLSearchParams({
                         username: username,
-                        password: password
+                        password: password,
+                        favColor: favColor,
+                        favFruit: favFruit
                     })
             });
 
@@ -1560,7 +1708,8 @@ function closeChangePassword() {
 
     document.getElementById("passwordModal").style.display = "none";
 
-    document.getElementById("currentPasswordInput").value = "";
+    document.getElementById("passwordFavColor").value = "";
+    document.getElementById("passwordFavFruit").value = "";
     document.getElementById("newPasswordInput").value = "";
     document.getElementById("passwordChangeError").textContent = "";
 }
@@ -1570,8 +1719,11 @@ async function submitChangePassword() {
 
     const username = getLoggedInUser();
 
-    const currentPassword =
-        document.getElementById("currentPasswordInput").value;
+    const favColor =
+        document.getElementById("passwordFavColor").value;
+
+    const favFruit =
+        document.getElementById("passwordFavFruit").value;
 
     const newPassword =
         document.getElementById("newPasswordInput").value;
@@ -1582,10 +1734,10 @@ async function submitChangePassword() {
     errorEl.textContent = "";
 
 
-    if (!currentPassword || !newPassword) {
+    if (!favColor || !favFruit || !newPassword) {
 
         errorEl.textContent =
-            "Please fill all fields.";
+            "Please answer your security questions and enter a new password.";
 
         return;
     }
@@ -1614,7 +1766,8 @@ async function submitChangePassword() {
                 body:
                     new URLSearchParams({
                         username: username,
-                        currentPassword: currentPassword,
+                        favColor: favColor,
+                        favFruit: favFruit,
                         newPassword: newPassword
                     })
             });
@@ -1643,3 +1796,457 @@ async function submitChangePassword() {
             "Could not connect to the server.";
     }
 }
+
+
+/* =========================================================
+   CHANGE SECURITY QUESTIONS
+   ========================================================= */
+
+function openChangeSecurity() {
+
+    closeProfileMenu();
+
+    document.getElementById("securityModal").style.display = "flex";
+}
+
+
+function closeChangeSecurity() {
+
+    document.getElementById("securityModal").style.display = "none";
+
+    document.getElementById("securityCurrentPassword").value = "";
+    document.getElementById("securityFavColor").value = "";
+    document.getElementById("securityFavFruit").value = "";
+    document.getElementById("securityChangeError").textContent = "";
+}
+
+
+async function submitChangeSecurity() {
+
+    const username = getLoggedInUser();
+
+    const currentPassword =
+        document.getElementById("securityCurrentPassword").value;
+
+    const favColor =
+        document.getElementById("securityFavColor").value;
+
+    const favFruit =
+        document.getElementById("securityFavFruit").value;
+
+    const errorEl =
+        document.getElementById("securityChangeError");
+
+    errorEl.textContent = "";
+
+
+    if (!currentPassword || !favColor || !favFruit) {
+
+        errorEl.textContent =
+            "Please fill all fields.";
+
+        return;
+    }
+
+
+    try {
+
+        const response =
+            await fetch(`${API}/update-security`, {
+
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+
+                body:
+                    new URLSearchParams({
+                        username: username,
+                        password: currentPassword,
+                        favColor: favColor,
+                        favFruit: favFruit
+                    })
+            });
+
+        const result =
+            await response.json();
+
+        if (!result.success) {
+
+            errorEl.textContent =
+                result.message || "Could not update security questions.";
+
+            return;
+        }
+
+        closeChangeSecurity();
+
+        alert("Security questions updated.");
+
+    }
+    catch (error) {
+
+        console.error("Change security questions error:", error);
+
+        errorEl.textContent =
+            "Could not connect to the server.";
+    }
+}
+
+
+/* =========================================================
+   DAILY SCHEDULE WIZARD
+   ========================================================= */
+
+let scheduleWakeTimeValue = "";
+let scheduleLastTaskName = "";
+let scheduleTaskCount = 0;
+
+function openDailySchedule() {
+
+    document.getElementById("scheduleModal").style.display = "flex";
+
+    document.getElementById("scheduleStepWake").style.display = "block";
+    document.getElementById("scheduleStepTasks").style.display = "none";
+    document.getElementById("scheduleStepTitle").textContent =
+        "Set your wake-up time";
+
+    document.getElementById("scheduleWakeTime").value = "";
+
+    scheduleWakeTimeValue = "";
+    scheduleLastTaskName = "";
+    scheduleTaskCount = 0;
+}
+
+
+function closeDailySchedule() {
+
+    document.getElementById("scheduleModal").style.display = "none";
+
+    document.getElementById("scheduleTaskName").value = "";
+    document.getElementById("scheduleTaskTime").value = "";
+    document.getElementById("scheduleError").textContent = "";
+
+    // Refresh the dashboard so newly added schedule tasks show up
+    showView(currentView);
+}
+
+
+function startScheduleTasks() {
+
+    const wakeTime =
+        document.getElementById("scheduleWakeTime").value;
+
+    if (!wakeTime) {
+
+        alert("Please pick a wake-up time.");
+
+        return;
+    }
+
+    scheduleWakeTimeValue = wakeTime;
+
+    document.getElementById("scheduleStepWake").style.display = "none";
+    document.getElementById("scheduleStepTasks").style.display = "block";
+
+    document.getElementById("scheduleStepTitle").textContent =
+        "Build your day";
+
+    document.getElementById("scheduleTaskLabel").textContent =
+        "Task after waking up";
+
+    document.getElementById("scheduleTaskTime").value = wakeTime;
+
+    document.getElementById("schedulePrevTask").textContent = "";
+}
+
+
+async function addScheduleTask() {
+
+    const name =
+        document.getElementById("scheduleTaskName").value.trim();
+
+    const time =
+        document.getElementById("scheduleTaskTime").value;
+
+    const errorEl =
+        document.getElementById("scheduleError");
+
+    errorEl.textContent = "";
+
+
+    if (!name || !time) {
+
+        errorEl.textContent =
+            "Please enter a task name and time.";
+
+        return;
+    }
+
+
+    const today = new Date();
+
+    const isoDate =
+        today.toISOString().slice(0, 10);
+
+
+    try {
+
+        const response =
+            await fetch(`${API}/add`, {
+
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+
+                body:
+                    new URLSearchParams({
+                        username:
+                            getLoggedInUser() || "",
+                        name: name,
+                        date: isoDate,
+                        time: time,
+                        priority: "2"
+                    })
+            });
+
+        const result =
+            await response.json();
+
+        if (!result.success) {
+
+            errorEl.textContent =
+                "Could not save that task.";
+
+            return;
+        }
+
+        tasks.push({
+            id: result.id,
+            name: name,
+            date: isoDate,
+            time: time,
+            priority: 2,
+            completed: false
+        });
+
+        normalizeTasks();
+
+        updateStatistics();
+
+        updateNextTask();
+
+
+        // Faded preview of the task that was just entered, shown
+        // while the user types the next one
+        scheduleLastTaskName = name;
+        scheduleTaskCount++;
+
+        document.getElementById("schedulePrevTask").textContent =
+            `Last: ${scheduleLastTaskName}`;
+
+        document.getElementById("scheduleTaskLabel").textContent =
+            `Task ${scheduleTaskCount + 1} (after "${scheduleLastTaskName}")`;
+
+        document.getElementById("scheduleTaskName").value = "";
+
+        document.getElementById("scheduleTaskName").focus();
+
+    }
+    catch (error) {
+
+        console.error("Schedule task error:", error);
+
+        errorEl.textContent =
+            "Could not connect to the server.";
+    }
+}
+
+
+/* =========================================================
+   AI ASSISTANT (ChatGPT)
+   ========================================================= */
+
+const AI_KEY_STORAGE = "smartReminderAiKey";
+
+function toggleAiChat() {
+
+    document.getElementById("aiChatPanel").classList.toggle("open");
+}
+
+
+function openAiKeySetup() {
+
+    document.getElementById("aiKeyModal").style.display = "flex";
+
+    const existing = localStorage.getItem(AI_KEY_STORAGE);
+
+    document.getElementById("aiKeyInput").value = existing || "";
+}
+
+
+function closeAiKeySetup() {
+
+    document.getElementById("aiKeyModal").style.display = "none";
+}
+
+
+function saveAiKey() {
+
+    const key =
+        document.getElementById("aiKeyInput").value.trim();
+
+    if (key) {
+        localStorage.setItem(AI_KEY_STORAGE, key);
+    }
+    else {
+        localStorage.removeItem(AI_KEY_STORAGE);
+    }
+
+    closeAiKeySetup();
+}
+
+
+function appendAiMessage(text, who) {
+
+    const container =
+        document.getElementById("aiChatMessages");
+
+    const bubble =
+        document.createElement("p");
+
+    bubble.className =
+        who === "user" ? "ai-msg ai-msg-user" : "ai-msg ai-msg-bot";
+
+    bubble.textContent = text;
+
+    container.appendChild(bubble);
+
+    container.scrollTop = container.scrollHeight;
+}
+
+
+async function sendAiChatMessage() {
+
+    const input =
+        document.getElementById("aiChatInput");
+
+    const text = input.value.trim();
+
+    if (!text) {
+        return;
+    }
+
+    const apiKey =
+        localStorage.getItem(AI_KEY_STORAGE);
+
+    appendAiMessage(text, "user");
+
+    input.value = "";
+
+    if (!apiKey) {
+
+        appendAiMessage(
+            "Add your OpenAI API key first (link below the chat box), then ask me again.",
+            "bot"
+        );
+
+        return;
+    }
+
+    appendAiMessage("Thinking...", "bot");
+
+    try {
+
+        const response =
+            await fetch("https://api.openai.com/v1/chat/completions", {
+
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${apiKey}`
+                },
+
+                body: JSON.stringify({
+                    model: "gpt-4o-mini",
+                    messages: [
+                        {
+                            role: "system",
+                            content:
+                                "You are a helpful assistant inside a reminder app called Smart Reminder. " +
+                                "Help the user plan their day and turn what they ask for into clear, " +
+                                "short suggested reminders (name, date, time, priority). Keep replies brief."
+                        },
+                        { role: "user", content: text }
+                    ]
+                })
+            });
+
+        const data = await response.json();
+
+        // Remove the "Thinking..." placeholder
+        const messages =
+            document.getElementById("aiChatMessages");
+
+        messages.removeChild(messages.lastChild);
+
+        if (data.error) {
+
+            appendAiMessage(
+                `AI error: ${data.error.message}`,
+                "bot"
+            );
+
+            return;
+        }
+
+        const reply =
+            data.choices &&
+            data.choices[0] &&
+            data.choices[0].message &&
+            data.choices[0].message.content;
+
+        appendAiMessage(
+            reply || "Sorry, I didn't get a response.",
+            "bot"
+        );
+
+    }
+    catch (error) {
+
+        console.error("AI chat error:", error);
+
+        const messages =
+            document.getElementById("aiChatMessages");
+
+        messages.removeChild(messages.lastChild);
+
+        appendAiMessage(
+            "Could not reach the AI service.",
+            "bot"
+        );
+    }
+}
+
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    const aiInput =
+        document.getElementById("aiChatInput");
+
+    if (aiInput) {
+
+        aiInput.addEventListener("keydown", function (event) {
+
+            if (event.key === "Enter") {
+                sendAiChatMessage();
+            }
+        });
+    }
+});

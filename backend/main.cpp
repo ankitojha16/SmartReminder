@@ -809,6 +809,61 @@ string updatePassword(const string& body) {
 
 
 // ============================================================
+// UPDATE SECURITY QUESTIONS (while logged in, verified with the
+// account password - lets a user change their favourite colour /
+// fruit answers without needing to know the old ones)
+// ============================================================
+
+string updateSecurity(const string& body) {
+
+    string username =
+        getValue(body, "username");
+
+    string password =
+        getValue(body, "password");
+
+    string favColor =
+        getValue(body, "favColor");
+
+    string favFruit =
+        getValue(body, "favFruit");
+
+
+    if (favColor.empty() || favFruit.empty()) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"Please choose your new favourite colour and fruit.\"}";
+    }
+
+    User* user = findUser(username);
+
+    if (!user) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"User not found.\"}";
+    }
+
+    if (user->passwordHash != hashPassword(password)) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"Incorrect password.\"}";
+    }
+
+    user->favColor = sanitizeField(toLower(favColor));
+    user->favFruit = sanitizeField(toLower(favFruit));
+
+    saveUsers();
+
+    return
+        "{\"success\":true,"
+        "\"message\":\"Security questions updated.\"}";
+}
+
+
+// ============================================================
 // FORGOT PASSWORD (reset using favourite colour + favourite fruit)
 // ============================================================
 
@@ -1393,6 +1448,24 @@ if (request.find("GET / HTTP") == 0) {
 
         string response =
             updatePassword(body);
+
+        sendResponse(
+            client,
+            response
+        );
+
+        return;
+    }
+
+
+    // UPDATE SECURITY QUESTIONS
+
+    if (
+        request.find("POST /update-security") == 0
+    ) {
+
+        string response =
+            updateSecurity(body);
 
         sendResponse(
             client,

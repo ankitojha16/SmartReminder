@@ -56,6 +56,10 @@
                 <button class="auth-submit" onclick="loginUser()">Log In</button>
 
                 <p class="auth-switch">
+                    <a onclick="openForgotPassword()">Forgot password?</a>
+                </p>
+
+                <p class="auth-switch">
                     Don't have an account? <a onclick="showSignup()">Sign up</a>
                 </p>
 
@@ -77,12 +81,91 @@
                 <label>Confirm Password</label>
                 <input type="password" id="signupConfirmPassword" placeholder="Repeat your password">
 
+                <p class="auth-hint">Security questions (used later to change or reset your password)</p>
+
+                <label>Favourite Colour</label>
+                <select id="signupFavColor">
+                    <option value="">Select a colour</option>
+                    <option value="red">Red</option>
+                    <option value="blue">Blue</option>
+                    <option value="green">Green</option>
+                    <option value="yellow">Yellow</option>
+                    <option value="black">Black</option>
+                    <option value="white">White</option>
+                    <option value="purple">Purple</option>
+                    <option value="orange">Orange</option>
+                    <option value="pink">Pink</option>
+                </select>
+
+                <label>Favourite Fruit</label>
+                <select id="signupFavFruit">
+                    <option value="">Select a fruit</option>
+                    <option value="apple">Apple</option>
+                    <option value="banana">Banana</option>
+                    <option value="mango">Mango</option>
+                    <option value="grapes">Grapes</option>
+                    <option value="orange">Orange</option>
+                    <option value="pineapple">Pineapple</option>
+                    <option value="strawberry">Strawberry</option>
+                    <option value="watermelon">Watermelon</option>
+                </select>
+
                 <p id="signupError" class="auth-error"></p>
 
                 <button class="auth-submit" onclick="signupUser()">Sign Up</button>
 
                 <p class="auth-switch">
                     Already have an account? <a onclick="showLogin()">Log in</a>
+                </p>
+
+            </div>
+
+
+            <!-- FORGOT PASSWORD FORM -->
+
+            <div id="forgotForm" class="auth-form" style="display:none;">
+
+                <h2>Reset your password</h2>
+
+                <label>Username</label>
+                <input type="text" id="forgotUsername" placeholder="Your username">
+
+                <label>Favourite Colour</label>
+                <select id="forgotFavColor">
+                    <option value="">Select a colour</option>
+                    <option value="red">Red</option>
+                    <option value="blue">Blue</option>
+                    <option value="green">Green</option>
+                    <option value="yellow">Yellow</option>
+                    <option value="black">Black</option>
+                    <option value="white">White</option>
+                    <option value="purple">Purple</option>
+                    <option value="orange">Orange</option>
+                    <option value="pink">Pink</option>
+                </select>
+
+                <label>Favourite Fruit</label>
+                <select id="forgotFavFruit">
+                    <option value="">Select a fruit</option>
+                    <option value="apple">Apple</option>
+                    <option value="banana">Banana</option>
+                    <option value="mango">Mango</option>
+                    <option value="grapes">Grapes</option>
+                    <option value="orange">Orange</option>
+                    <option value="pineapple">Pineapple</option>
+                    <option value="strawberry">Strawberry</option>
+                    <option value="watermelon">Watermelon</option>
+                </select>
+
+                <label>New Password</label>
+                <input type="password" id="forgotNewPassword" placeholder="At least 6 characters">
+
+                <p id="forgotError" class="auth-error"></p>
+
+                <button class="auth-submit" onclick="submitForgotPassword()">Reset Password</button>
+
+                <p class="auth-switch">
+                    <a onclick="showLogin()">Back to log in</a>
                 </p>
 
             </div>
@@ -105,9 +188,12 @@
                     <span>⏰</span>
                 </div>
 
-                <h1 id="sidebarTitle">
-                    Smart<span>Reminder</span>
-                </h1>
+                <div id="sidebarTitle">
+                    <h1>
+                        Smart<span>Reminder</span>
+                    </h1>
+                    <p class="sidebar-tagline">Never miss what matters.</p>
+                </div>
 
             </div>
 
@@ -120,6 +206,10 @@
 
                 <button data-view="add" onclick="openAddTask()">
                     ➕ Add Reminder
+                </button>
+
+                <button data-view="schedule" onclick="openDailySchedule()">
+                    🗓️ Daily Schedule
                 </button>
 
                 <button data-view="all" onclick="showAllTasks()">
@@ -137,6 +227,54 @@
             </nav>
 
         </aside>
+
+
+        <!-- AI ASSISTANT FLOATING BUTTON -->
+
+        <button id="aiFab" class="ai-fab" onclick="toggleAiChat()" title="Ask AI">
+            🤖
+        </button>
+
+
+        <!-- AI ASSISTANT CHAT PANEL -->
+
+        <div id="aiChatPanel" class="ai-chat-panel">
+
+            <div class="ai-chat-header">
+                <strong>AI Assistant</strong>
+                <button onclick="toggleAiChat()">✕</button>
+            </div>
+
+            <div id="aiChatMessages" class="ai-chat-messages">
+                <p class="ai-msg ai-msg-bot">Hi! Tell me what you'd like to plan or remember, and I can help you turn it into reminders.</p>
+            </div>
+
+            <div class="ai-chat-input-row">
+                <input type="text" id="aiChatInput" placeholder="Ask the AI anything...">
+                <button onclick="sendAiChatMessage()">Send</button>
+            </div>
+
+            <p class="ai-chat-key-row">
+                <a onclick="openAiKeySetup()">Set OpenAI API key</a>
+            </p>
+
+        </div>
+
+
+        <!-- AI KEY SETUP MODAL -->
+
+        <div id="aiKeyModal" class="modal">
+            <div class="modal-content">
+                <h2>Connect ChatGPT</h2>
+                <p class="modal-hint">Paste your own OpenAI API key. It is stored only in your browser and sent directly from your browser to OpenAI.</p>
+                <label>OpenAI API Key</label>
+                <input type="password" id="aiKeyInput" placeholder="sk-...">
+                <div class="modal-buttons">
+                    <button onclick="closeAiKeySetup()">Cancel</button>
+                    <button class="save" onclick="saveAiKey()">Save</button>
+                </div>
+            </div>
+        </div>
 
 
 
@@ -185,6 +323,8 @@
                             <button onclick="openChangeUsername()">Change Username</button>
 
                             <button onclick="openChangePassword()">Change Password</button>
+
+                            <button onclick="openChangeSecurity()">Change Security Questions</button>
 
                             <button class="logout-btn" onclick="logoutUser()">Log Out</button>
 
@@ -493,17 +633,34 @@
                 Change Password
             </h2>
 
+            <p class="modal-hint">Answer your security questions to confirm it's you.</p>
 
-            <label>
-                Current Password
-            </label>
+            <label>Favourite Colour</label>
+            <select id="passwordFavColor">
+                <option value="">Select a colour</option>
+                <option value="red">Red</option>
+                <option value="blue">Blue</option>
+                <option value="green">Green</option>
+                <option value="yellow">Yellow</option>
+                <option value="black">Black</option>
+                <option value="white">White</option>
+                <option value="purple">Purple</option>
+                <option value="orange">Orange</option>
+                <option value="pink">Pink</option>
+            </select>
 
-            <input
-                type="password"
-                id="currentPasswordInput"
-                placeholder="Current password"
-            >
-
+            <label>Favourite Fruit</label>
+            <select id="passwordFavFruit">
+                <option value="">Select a fruit</option>
+                <option value="apple">Apple</option>
+                <option value="banana">Banana</option>
+                <option value="mango">Mango</option>
+                <option value="grapes">Grapes</option>
+                <option value="orange">Orange</option>
+                <option value="pineapple">Pineapple</option>
+                <option value="strawberry">Strawberry</option>
+                <option value="watermelon">Watermelon</option>
+            </select>
 
             <label>
                 New Password
@@ -534,6 +691,101 @@
 
         </div>
 
+
+    </div>
+
+
+
+    <!-- CHANGE SECURITY QUESTIONS POPUP -->
+
+    <div id="securityModal" class="modal">
+
+        <div class="modal-content">
+
+            <h2>Change Security Questions</h2>
+
+            <label>Current Password</label>
+            <input type="password" id="securityCurrentPassword" placeholder="Confirm your password">
+
+            <label>New Favourite Colour</label>
+            <select id="securityFavColor">
+                <option value="">Select a colour</option>
+                <option value="red">Red</option>
+                <option value="blue">Blue</option>
+                <option value="green">Green</option>
+                <option value="yellow">Yellow</option>
+                <option value="black">Black</option>
+                <option value="white">White</option>
+                <option value="purple">Purple</option>
+                <option value="orange">Orange</option>
+                <option value="pink">Pink</option>
+            </select>
+
+            <label>New Favourite Fruit</label>
+            <select id="securityFavFruit">
+                <option value="">Select a fruit</option>
+                <option value="apple">Apple</option>
+                <option value="banana">Banana</option>
+                <option value="mango">Mango</option>
+                <option value="grapes">Grapes</option>
+                <option value="orange">Orange</option>
+                <option value="pineapple">Pineapple</option>
+                <option value="strawberry">Strawberry</option>
+                <option value="watermelon">Watermelon</option>
+            </select>
+
+            <p id="securityChangeError" class="auth-error"></p>
+
+            <div class="modal-buttons">
+                <button onclick="closeChangeSecurity()">Cancel</button>
+                <button class="save" onclick="submitChangeSecurity()">Save</button>
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- DAILY SCHEDULE WIZARD POPUP -->
+
+    <div id="scheduleModal" class="modal">
+
+        <div class="modal-content">
+
+            <h2 id="scheduleStepTitle">Set your wake-up time</h2>
+
+            <!-- STEP 1: WAKE UP TIME -->
+            <div id="scheduleStepWake">
+                <label>What time do you wake up?</label>
+                <input type="time" id="scheduleWakeTime">
+
+                <div class="modal-buttons">
+                    <button onclick="closeDailySchedule()">Cancel</button>
+                    <button class="save" onclick="startScheduleTasks()">Next</button>
+                </div>
+            </div>
+
+            <!-- STEP 2: SEQUENTIAL TASK ENTRY -->
+            <div id="scheduleStepTasks" style="display:none;">
+
+                <p id="schedulePrevTask" class="schedule-prev-task"></p>
+
+                <label id="scheduleTaskLabel">Task after waking up</label>
+                <input type="text" id="scheduleTaskName" placeholder="e.g. Brush teeth">
+
+                <label>Time</label>
+                <input type="time" id="scheduleTaskTime">
+
+                <p id="scheduleError" class="auth-error"></p>
+
+                <div class="modal-buttons">
+                    <button onclick="closeDailySchedule()">Done</button>
+                    <button class="save" onclick="addScheduleTask()">Add &amp; Next</button>
+                </div>
+            </div>
+
+        </div>
 
     </div>
 
