@@ -11,3 +11,9 @@ tasks.txt
 # OS/editor junk
 .DS_Store
 *.swp
+
+# Local VS Code settings
+.vscode/
+
+# Local compiled backend
+backend/server
