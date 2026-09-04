@@ -3946,32 +3946,7 @@ document.addEventListener(
 
                         sendAiChatMessage();
                     }
-                }
-            );
-        }
-
-
-        /*
-         * Extra safety:
-         * Make sure the AI button works even
-         * if inline onclick handling is changed.
-         */
-
-        const aiFab =
-            document.getElementById(
-                "aiFab"
-            );
-
-
-        if (aiFab) {
-
-            aiFab.addEventListener(
-                "click",
-                function () {
-
-                    toggleAiChat();
-                }
-            );
-        }
-    }
-);
+                       }
+    );
+}
+});
