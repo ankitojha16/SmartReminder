@@ -8,6 +8,6 @@ RUN apt-get update && \
 
 COPY . .
 
-RUN g++ -std=c++17 backend/main.cpp backend/Task.cpp -o server -lpq
+RUN g++ -std=c++17 -I/usr/include/postgresql backend/main.cpp backend/Task.cpp -o server -lpq
 
 CMD ["./server"]
