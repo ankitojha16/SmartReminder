@@ -9,6 +9,7 @@ using namespace std;
 Task::Task() {
 
     id = 0;
+    username = "";
     name = "";
     date = "";
     time = "";
@@ -22,6 +23,7 @@ Task::Task() {
 
 Task::Task(
     int id,
+    string username,
     string name,
     string date,
     string time,
@@ -29,6 +31,7 @@ Task::Task(
 ) {
 
     this->id = id;
+    this->username = username;
     this->name = name;
     this->date = date;
     this->time = time;
@@ -43,6 +46,8 @@ Task::Task(
 void Task::display() const {
 
     cout << "----------------------------------" << endl;
+
+    cout << "Owner: " << username << endl;
 
     cout << "Task: " << name << endl;
 

@@ -9,6 +9,7 @@ class Task {
 public:
 
     int id;
+    string username;   // owner of this reminder (privacy fix)
     string name;
     string date;
     string time;
@@ -19,6 +20,7 @@ public:
 
     Task(
         int id,
+        string username,
         string name,
         string date,
         string time,

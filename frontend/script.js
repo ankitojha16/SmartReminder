@@ -5,9 +5,15 @@
 let tasks = [];
 let currentView = "dashboard";
 
- const API = "https://smartreminder-zllc.onrender.com";
+const API = "https://smartreminder-zllc.onrender.com";
 
 const AUTH_KEY = "smartReminderUser";
+
+// Which calendar month is currently on screen. Only the
+// previous, current, and next real-world month are allowed
+// (see changeCalendarMonth).
+let calendarDate = new Date();
+let selectedCalendarDay = null;
 
 
 // ==========================================
@@ -15,6 +21,8 @@ const AUTH_KEY = "smartReminderUser";
 // ==========================================
 
 document.addEventListener("DOMContentLoaded", async () => {
+
+    applyTheme();
 
     const loggedInUser = getLoggedInUser();
 
@@ -37,21 +45,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Close modal when clicking outside it
     window.addEventListener("click", function (event) {
 
-        const modal = document.getElementById("taskModal");
-        const usernameModal = document.getElementById("usernameModal");
-        const passwordModal = document.getElementById("passwordModal");
+        const modalIds = [
+            "taskModal",
+            "usernameModal",
+            "passwordModal",
+            "forgotModal",
+            "securityModal"
+        ];
 
-        if (event.target === modal) {
-            closeAddTask();
-        }
+        modalIds.forEach(function (id) {
 
-        if (event.target === usernameModal) {
-            closeChangeUsername();
-        }
+            const modal = document.getElementById(id);
 
-        if (event.target === passwordModal) {
-            closeChangePassword();
-        }
+            if (event.target === modal) {
+
+                modal.style.display = "none";
+            }
+        });
     });
 
     // Close profile dropdown when clicking outside it
@@ -67,14 +77,28 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 
 // ==========================================
-// LOAD TASKS FROM C++ SERVER
+// LOAD TASKS FROM C++ SERVER (SCOPED TO THE LOGGED-IN USER)
 // ==========================================
 
 async function loadTasks() {
 
+    const username = getLoggedInUser();
+
+    if (!username) {
+
+        tasks = [];
+
+        updateStatistics();
+        updateNextTask();
+
+        return;
+    }
+
     try {
 
-        const response = await fetch(`${API}/tasks`);
+        const response = await fetch(
+            `${API}/tasks?username=${encodeURIComponent(username)}`
+        );
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -205,6 +229,12 @@ function showView(view) {
             ".upcoming .section-title button"
         );
 
+    const taskListEl =
+        document.getElementById("taskList");
+
+    const calendarViewEl =
+        document.getElementById("calendarView");
+
 
     // ======================================
     // DASHBOARD
@@ -217,6 +247,9 @@ function showView(view) {
         important.style.display = "block";
 
         upcoming.style.display = "block";
+
+        taskListEl.style.display = "block";
+        calendarViewEl.style.display = "none";
 
         upcomingTitle.textContent =
             "Upcoming Reminders";
@@ -255,6 +288,9 @@ function showView(view) {
 
     if (view === "all") {
 
+        taskListEl.style.display = "block";
+        calendarViewEl.style.display = "none";
+
         upcomingTitle.textContent =
             "All Tasks";
 
@@ -270,8 +306,18 @@ function showView(view) {
 
     if (view === "calendar") {
 
+        taskListEl.style.display = "none";
+        calendarViewEl.style.display = "block";
+
+        addButton.style.display = "none";
+
         upcomingTitle.textContent =
             "Calendar";
+
+        // Always come back into the calendar on the current
+        // month, looking at today.
+        calendarDate = new Date();
+        selectedCalendarDay = formatDateYMD(calendarDate);
 
         renderCalendar();
 
@@ -284,6 +330,9 @@ function showView(view) {
     // ======================================
 
     if (view === "completed") {
+
+        taskListEl.style.display = "block";
+        calendarViewEl.style.display = "none";
 
         upcomingTitle.textContent =
             "Completed Tasks";
@@ -413,6 +462,15 @@ function closeAddTask() {
 
 async function addTask() {
 
+    const username = getLoggedInUser();
+
+    if (!username) {
+
+        alert("Please log in first.");
+
+        return;
+    }
+
     const name =
         document
             .getElementById("taskName")
@@ -465,6 +523,8 @@ async function addTask() {
                 body:
                     new URLSearchParams({
 
+                        username: username,
+
                         name: name,
 
                         date: date,
@@ -492,7 +552,8 @@ async function addTask() {
         if (!result.success) {
 
             alert(
-                "C++ server could not add the reminder."
+                result.message ||
+                "The server could not add the reminder."
             );
 
             return;
@@ -543,11 +604,7 @@ async function addTask() {
 
 
         alert(
-            "Could not connect to C++ server.\n\n" +
-
-            "Make sure SmartReminderServer is running on " +
-
-            "127.0.0.1:8080."
+            "Could not connect to the server. Please try again in a moment."
         );
     }
 }
@@ -736,6 +793,25 @@ function renderTaskList(list) {
 
 
         // ==================================
+        // DELETE BUTTON
+        // ==================================
+
+        const deleteButton =
+            document.createElement("button");
+
+        deleteButton.textContent = "🗑 Delete";
+
+        deleteButton.className = "delete-btn";
+
+        deleteButton.onclick = function () {
+
+            deleteTask(task.id);
+        };
+
+        actions.appendChild(deleteButton);
+
+
+        // ==================================
         // ADD TO CARD
         // ==================================
 
@@ -754,6 +830,8 @@ function renderTaskList(list) {
 // ==========================================
 
 async function completeTask(id) {
+
+    const username = getLoggedInUser();
 
     const task =
         tasks.find(
@@ -774,7 +852,8 @@ async function completeTask(id) {
 
         const response =
             await fetch(
-                `${API}/complete?id=${encodeURIComponent(id)}`,
+                `${API}/complete?id=${encodeURIComponent(id)}` +
+                `&username=${encodeURIComponent(username)}`,
                 {
                     method: "POST"
                 }
@@ -786,6 +865,15 @@ async function completeTask(id) {
             throw new Error(
                 `HTTP ${response.status}`
             );
+        }
+
+        const result = await response.json();
+
+        if (!result.success) {
+
+            alert(result.message || "Could not update the reminder.");
+
+            return;
         }
 
 
@@ -801,12 +889,6 @@ async function completeTask(id) {
 
         showView(currentView);
 
-
-        // Refresh from backend
-        await loadTasks();
-
-        showView(currentView);
-
     }
     catch (error) {
 
@@ -817,8 +899,69 @@ async function completeTask(id) {
 
 
         alert(
-            "Could not connect to C++ server."
+            "Could not connect to the server."
         );
+    }
+}
+
+
+// ==========================================
+// DELETE TASK
+// ==========================================
+
+async function deleteTask(id) {
+
+    const username = getLoggedInUser();
+
+    const confirmed =
+        confirm("Delete this reminder? This cannot be undone.");
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+
+        const response =
+            await fetch(
+                `${API}/delete?id=${encodeURIComponent(id)}` +
+                `&username=${encodeURIComponent(username)}`,
+                {
+                    method: "POST"
+                }
+            );
+
+        if (!response.ok) {
+
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (!result.success) {
+
+            alert(result.message || "Could not delete the reminder.");
+
+            return;
+        }
+
+        // Remove locally
+        tasks = tasks.filter(
+            item => String(item.id) !== String(id)
+        );
+
+        updateStatistics();
+
+        updateNextTask();
+
+        showView(currentView);
+
+    }
+    catch (error) {
+
+        console.error("Delete task error:", error);
+
+        alert("Could not connect to the server.");
     }
 }
 
@@ -957,126 +1100,273 @@ function updateNextTask() {
 
 
 // ==========================================
-// CALENDAR
+// CALENDAR (real month grid, 3-month window)
 // ==========================================
+
+function formatDateYMD(dateObj) {
+
+    const year = dateObj.getFullYear();
+
+    const month =
+        String(dateObj.getMonth() + 1).padStart(2, "0");
+
+    const day =
+        String(dateObj.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+}
+
+
+function isSameMonth(a, b) {
+
+    return (
+        a.getFullYear() === b.getFullYear() &&
+        a.getMonth() === b.getMonth()
+    );
+}
+
+
+function changeCalendarMonth(delta) {
+
+    const today = new Date();
+
+    const candidate = new Date(
+        calendarDate.getFullYear(),
+        calendarDate.getMonth() + delta,
+        1
+    );
+
+    const earliest = new Date(
+        today.getFullYear(),
+        today.getMonth() - 1,
+        1
+    );
+
+    const latest = new Date(
+        today.getFullYear(),
+        today.getMonth() + 1,
+        1
+    );
+
+    // Only last month, this month, and next month are allowed.
+    if (candidate < earliest || candidate > latest) {
+        return;
+    }
+
+    calendarDate = candidate;
+
+    selectedCalendarDay = null;
+
+    renderCalendar();
+}
+
 
 function renderCalendar() {
 
-    const container =
-        document.getElementById(
-            "taskList"
-        );
+    const monthLabelEl =
+        document.getElementById("calendarMonthLabel");
 
+    const gridEl =
+        document.getElementById("calendarGrid");
 
-    if (!container) {
+    const prevBtn =
+        document.getElementById("prevMonthBtn");
+
+    const nextBtn =
+        document.getElementById("nextMonthBtn");
+
+    if (!gridEl || !monthLabelEl) {
         return;
     }
 
+    const today = new Date();
 
-    container.innerHTML = "";
+    const year = calendarDate.getFullYear();
+    const month = calendarDate.getMonth();
+
+    const monthNames = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ];
+
+    monthLabelEl.textContent = `${monthNames[month]} ${year}`;
+
+    // Disable navigation past the 3-month window (last, this, next).
+    const earliest = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const latest = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const prevCandidate = new Date(year, month - 1, 1);
+    const nextCandidate = new Date(year, month + 1, 1);
+
+    if (prevBtn) {
+        prevBtn.disabled = prevCandidate < earliest;
+    }
+
+    if (nextBtn) {
+        nextBtn.disabled = nextCandidate > latest;
+    }
+
+    // Group tasks by exact date (YYYY-MM-DD) for a quick lookup.
+    const tasksByDate = {};
+
+    tasks.forEach(task => {
+
+        if (!tasksByDate[task.date]) {
+            tasksByDate[task.date] = [];
+        }
+
+        tasksByDate[task.date].push(task);
+    });
+
+    gridEl.innerHTML = "";
+
+    // Weekday headers
+    ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach(label => {
+
+        const headerCell = document.createElement("div");
+
+        headerCell.className = "calendar-weekday";
+
+        headerCell.textContent = label;
+
+        gridEl.appendChild(headerCell);
+    });
+
+    const firstOfMonth = new Date(year, month, 1);
+    const startWeekday = firstOfMonth.getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    // Blank cells before day 1
+    for (let i = 0; i < startWeekday; i++) {
+
+        const blank = document.createElement("div");
+
+        blank.className = "calendar-day empty-cell";
+
+        gridEl.appendChild(blank);
+    }
+
+    // One cell per real calendar day
+    for (let day = 1; day <= daysInMonth; day++) {
+
+        const cellDate = new Date(year, month, day);
+
+        const dateStr = formatDateYMD(cellDate);
+
+        const cell = document.createElement("div");
+
+        cell.className = "calendar-day";
+
+        if (
+            cellDate.getFullYear() === today.getFullYear() &&
+            cellDate.getMonth() === today.getMonth() &&
+            cellDate.getDate() === today.getDate()
+        ) {
+            cell.classList.add("today");
+        }
+
+        if (dateStr === selectedCalendarDay) {
+            cell.classList.add("selected");
+        }
+
+        const dayNumber = document.createElement("div");
+
+        dayNumber.textContent = day;
+
+        cell.appendChild(dayNumber);
+
+        if (tasksByDate[dateStr] && tasksByDate[dateStr].length > 0) {
+
+            const dot = document.createElement("div");
+
+            dot.className = "dot";
+
+            cell.appendChild(dot);
+        }
+
+        cell.onclick = function () {
+
+            selectedCalendarDay = dateStr;
+
+            renderCalendar();
+
+            showCalendarDayDetails(dateStr);
+        };
+
+        gridEl.appendChild(cell);
+    }
+
+    if (selectedCalendarDay && isSameMonth(calendarDate, new Date(selectedCalendarDay))) {
+
+        showCalendarDayDetails(selectedCalendarDay);
+    }
+    else {
+
+        const detailsEl = document.getElementById("calendarDayDetails");
+
+        if (detailsEl) {
+
+            detailsEl.innerHTML =
+                '<p class="empty">Click a date to see its reminders.</p>';
+        }
+    }
+}
 
 
-    if (tasks.length === 0) {
+function showCalendarDayDetails(dateStr) {
 
-        container.innerHTML =
-            '<p class="empty">No reminders to show on the calendar.</p>';
+    const detailsEl =
+        document.getElementById("calendarDayDetails");
+
+    if (!detailsEl) {
+        return;
+    }
+
+    const dayTasks =
+        tasks.filter(task => task.date === dateStr);
+
+    const dateObj = new Date(dateStr);
+
+    const niceDate = dateObj.toLocaleDateString(undefined, {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric"
+    });
+
+    if (dayTasks.length === 0) {
+
+        detailsEl.innerHTML =
+            `<h3>${niceDate}</h3>` +
+            '<p class="empty">No reminders on this day.</p>';
 
         return;
     }
 
+    let html = `<h3>${niceDate} — ${dayTasks.length} reminder(s)</h3>`;
 
-    // Group by date
-    const grouped = {};
-
-
-    [...tasks]
-        .sort((a, b) => {
-
-            return (
-                `${a.date} ${a.time}`
-            ).localeCompare(
-                `${b.date} ${b.time}`
-            );
-
-        })
+    dayTasks
+        .sort((a, b) => a.time.localeCompare(b.time))
         .forEach(task => {
 
-            if (!grouped[task.date]) {
-
-                grouped[task.date] = [];
-            }
-
-
-            grouped[task.date].push(task);
+            html += '<div class="task" style="display:block;">' +
+                `<strong>${escapeHtml(task.name)}</strong>` +
+                `<p>${escapeHtml(task.time)} • ${getPriorityName(task.priority)}` +
+                (task.completed ? " • ✓ Completed" : "") +
+                "</p>" +
+                "</div>";
         });
 
-
-    Object.keys(grouped)
-        .sort()
-        .forEach(date => {
-
-            const day =
-                document.createElement("div");
+    detailsEl.innerHTML = html;
+}
 
 
-            day.className =
-                "task";
+function escapeHtml(value) {
 
+    const div = document.createElement("div");
 
-            day.style.display =
-                "block";
+    div.textContent = value == null ? "" : String(value);
 
-
-            // Date heading
-            const heading =
-                document.createElement(
-                    "strong"
-                );
-
-
-            heading.textContent =
-                date;
-
-
-            heading.style.fontSize =
-                "20px";
-
-
-            day.appendChild(
-                heading
-            );
-
-
-            // Tasks for this date
-            grouped[date].forEach(task => {
-
-                const row =
-                    document.createElement("p");
-
-
-                row.style.marginTop =
-                    "10px";
-
-
-                row.textContent =
-                    `${task.time} — ` +
-                    `${task.name} — ` +
-                    `${getPriorityName(
-                        task.priority
-                    )}` +
-                    (
-                        task.completed
-                            ? " — ✓ Completed"
-                            : ""
-                    );
-
-
-                day.appendChild(row);
-            });
-
-
-            container.appendChild(day);
-        });
+    return div.innerHTML;
 }
 
 
@@ -1152,12 +1442,6 @@ function toggleTheme() {
 }
 
 
-/* Apply saved theme when page opens */
-document.addEventListener("DOMContentLoaded", function () {
-    applyTheme();
-});
-
-
 /* =========================================================
    AUTH - SESSION HELPERS
    ========================================================= */
@@ -1165,6 +1449,12 @@ document.addEventListener("DOMContentLoaded", function () {
 function getLoggedInUser() {
 
     return localStorage.getItem(AUTH_KEY);
+}
+
+
+function seenKeyFor(username) {
+
+    return `smartReminderSeen_${username.toLowerCase()}`;
 }
 
 
@@ -1191,6 +1481,38 @@ function showAppScreen(username) {
     }
 
     updateProfileDisplay(username);
+
+    updateGreeting(username);
+}
+
+
+function updateGreeting(username) {
+
+    const greetingEl =
+        document.getElementById("greetingText");
+
+    if (!greetingEl || !username) {
+        return;
+    }
+
+    const isBrandNewSignup =
+        sessionStorage.getItem("smartReminderJustSignedUp") === "1";
+
+    const hasSeenBefore =
+        localStorage.getItem(seenKeyFor(username)) === "1";
+
+    if (isBrandNewSignup || !hasSeenBefore) {
+
+        greetingEl.textContent = `Welcome, @${username} 👋`;
+    }
+    else {
+
+        greetingEl.textContent = `Welcome back, @${username} 👋`;
+    }
+
+    localStorage.setItem(seenKeyFor(username), "1");
+
+    sessionStorage.removeItem("smartReminderJustSignedUp");
 }
 
 
@@ -1326,6 +1648,12 @@ async function signupUser() {
     const confirmPassword =
         document.getElementById("signupConfirmPassword").value;
 
+    const favColor =
+        document.getElementById("signupFavColor").value;
+
+    const favFruit =
+        document.getElementById("signupFavFruit").value;
+
     const errorEl =
         document.getElementById("signupError");
 
@@ -1336,6 +1664,14 @@ async function signupUser() {
 
         errorEl.textContent =
             "Please fill all fields.";
+
+        return;
+    }
+
+    if (!favColor || !favFruit) {
+
+        errorEl.textContent =
+            "Please choose your favourite colour and fruit.";
 
         return;
     }
@@ -1372,7 +1708,9 @@ async function signupUser() {
                 body:
                     new URLSearchParams({
                         username: username,
-                        password: password
+                        password: password,
+                        favColor: favColor,
+                        favFruit: favFruit
                     })
             });
 
@@ -1386,6 +1724,8 @@ async function signupUser() {
 
             return;
         }
+
+        sessionStorage.setItem("smartReminderJustSignedUp", "1");
 
         localStorage.setItem(AUTH_KEY, result.username);
 
@@ -1527,11 +1867,22 @@ async function submitChangeUsername() {
             return;
         }
 
+        // Carry the "seen before" flag over to the new username
+        // so the greeting doesn't reset to "Welcome" after a rename.
+        if (localStorage.getItem(seenKeyFor(currentUsername)) === "1") {
+
+            localStorage.setItem(seenKeyFor(result.username), "1");
+        }
+
         localStorage.setItem(AUTH_KEY, result.username);
 
         updateProfileDisplay(result.username);
 
         closeChangeUsername();
+
+        await loadTasks();
+
+        showView(currentView);
 
     }
     catch (error) {
@@ -1638,6 +1989,232 @@ async function submitChangePassword() {
     catch (error) {
 
         console.error("Change password error:", error);
+
+        errorEl.textContent =
+            "Could not connect to the server.";
+    }
+}
+
+
+/* =========================================================
+   FORGOT PASSWORD (from the login screen)
+   ========================================================= */
+
+function openForgotPassword() {
+
+    document.getElementById("forgotModal").style.display = "flex";
+}
+
+
+function closeForgotPassword() {
+
+    document.getElementById("forgotModal").style.display = "none";
+
+    document.getElementById("forgotUsername").value = "";
+    document.getElementById("forgotFavColor").value = "";
+    document.getElementById("forgotFavFruit").value = "";
+    document.getElementById("forgotNewPassword").value = "";
+    document.getElementById("forgotConfirmPassword").value = "";
+    document.getElementById("forgotError").textContent = "";
+}
+
+
+async function submitForgotPassword() {
+
+    const username =
+        document.getElementById("forgotUsername").value.trim();
+
+    const favColor =
+        document.getElementById("forgotFavColor").value;
+
+    const favFruit =
+        document.getElementById("forgotFavFruit").value;
+
+    const newPassword =
+        document.getElementById("forgotNewPassword").value;
+
+    const confirmPassword =
+        document.getElementById("forgotConfirmPassword").value;
+
+    const errorEl =
+        document.getElementById("forgotError");
+
+    errorEl.textContent = "";
+
+
+    if (!username || !favColor || !favFruit) {
+
+        errorEl.textContent =
+            "Please fill all fields.";
+
+        return;
+    }
+
+    if (newPassword.length < 6) {
+
+        errorEl.textContent =
+            "New password must be at least 6 characters.";
+
+        return;
+    }
+
+    if (newPassword !== confirmPassword) {
+
+        errorEl.textContent =
+            "Passwords do not match.";
+
+        return;
+    }
+
+
+    try {
+
+        const response =
+            await fetch(`${API}/forgot-reset`, {
+
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+
+                body:
+                    new URLSearchParams({
+                        username: username,
+                        favColor: favColor,
+                        favFruit: favFruit,
+                        newPassword: newPassword
+                    })
+            });
+
+        const result =
+            await response.json();
+
+        if (!result.success) {
+
+            errorEl.textContent =
+                result.message || "Could not reset password.";
+
+            return;
+        }
+
+        closeForgotPassword();
+
+        alert("Your password has been reset. Please log in.");
+
+        showLogin();
+
+    }
+    catch (error) {
+
+        console.error("Forgot password error:", error);
+
+        errorEl.textContent =
+            "Could not connect to the server.";
+    }
+}
+
+
+/* =========================================================
+   UPDATE SECURITY QUESTIONS (while logged in)
+   ========================================================= */
+
+function openSecurityModal() {
+
+    closeProfileMenu();
+
+    document.getElementById("securityModal").style.display = "flex";
+}
+
+
+function closeSecurityModal() {
+
+    document.getElementById("securityModal").style.display = "none";
+
+    document.getElementById("securityCurrentPassword").value = "";
+    document.getElementById("securityFavColor").value = "";
+    document.getElementById("securityFavFruit").value = "";
+    document.getElementById("securityChangeError").textContent = "";
+}
+
+
+async function submitSecurityUpdate() {
+
+    const username = getLoggedInUser();
+
+    const currentPassword =
+        document.getElementById("securityCurrentPassword").value;
+
+    const favColor =
+        document.getElementById("securityFavColor").value;
+
+    const favFruit =
+        document.getElementById("securityFavFruit").value;
+
+    const errorEl =
+        document.getElementById("securityChangeError");
+
+    errorEl.textContent = "";
+
+
+    if (!currentPassword) {
+
+        errorEl.textContent =
+            "Please enter your current password.";
+
+        return;
+    }
+
+    if (!favColor || !favFruit) {
+
+        errorEl.textContent =
+            "Please choose your favourite colour and fruit.";
+
+        return;
+    }
+
+
+    try {
+
+        const response =
+            await fetch(`${API}/update-security`, {
+
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+
+                body:
+                    new URLSearchParams({
+                        username: username,
+                        currentPassword: currentPassword,
+                        favColor: favColor,
+                        favFruit: favFruit
+                    })
+            });
+
+        const result =
+            await response.json();
+
+        if (!result.success) {
+
+            errorEl.textContent =
+                result.message || "Could not update security questions.";
+
+            return;
+        }
+
+        closeSecurityModal();
+
+        alert("Security questions updated.");
+
+    }
+    catch (error) {
+
+        console.error("Update security error:", error);
 
         errorEl.textContent =
             "Could not connect to the server.";

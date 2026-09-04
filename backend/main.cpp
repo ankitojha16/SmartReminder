@@ -140,13 +140,15 @@ int nextID = 1;
 
 
 // ============================================================
-// USER ACCOUNT (SIGNUP / LOGIN)
+// USER ACCOUNT (SIGNUP / LOGIN / SECURITY QUESTIONS)
 // ============================================================
 
 struct User {
 
     string username;
     string passwordHash;
+    string favColor;
+    string favFruit;
 };
 
 vector<User> allUsers;
@@ -184,6 +186,38 @@ string hashPassword(const string& password) {
 }
 
 
+// Replace any pipe characters, since "|" is our on-disk field
+// separator. Keeps a stray "|" typed by a user from corrupting
+// the users.txt / tasks.txt file format.
+
+string sanitizeField(string value) {
+
+    for (char& c : value) {
+
+        if (c == '|') {
+            c = ' ';
+        }
+    }
+
+    return value;
+}
+
+
+User* findUser(const string& username) {
+
+    string target = toLower(username);
+
+    for (User& user : allUsers) {
+
+        if (toLower(user.username) == target) {
+            return &user;
+        }
+    }
+
+    return nullptr;
+}
+
+
 void loadUsers() {
 
     allUsers.clear();
@@ -198,20 +232,43 @@ void loadUsers() {
 
     while (getline(file, line)) {
 
-        size_t separator =
-            line.find('|');
+        if (line.empty()) {
+            continue;
+        }
 
-        if (separator == string::npos) {
+        vector<string> parts;
+
+        size_t pos = 0;
+
+        while (true) {
+
+            size_t sep = line.find('|', pos);
+
+            if (sep == string::npos) {
+
+                parts.push_back(line.substr(pos));
+                break;
+            }
+
+            parts.push_back(line.substr(pos, sep - pos));
+
+            pos = sep + 1;
+        }
+
+        if (parts.size() < 2) {
             continue;
         }
 
         User user;
 
-        user.username =
-            line.substr(0, separator);
+        user.username = parts[0];
+        user.passwordHash = parts[1];
 
-        user.passwordHash =
-            line.substr(separator + 1);
+        // Older users.txt files (before security questions were
+        // added) only have 2 fields. Default the rest so old
+        // accounts still load instead of being skipped.
+        user.favColor = parts.size() > 2 ? parts[2] : "";
+        user.favFruit = parts.size() > 3 ? parts[3] : "";
 
         allUsers.push_back(user);
     }
@@ -227,6 +284,10 @@ void saveUsers() {
         file << user.username
              << "|"
              << user.passwordHash
+             << "|"
+             << user.favColor
+             << "|"
+             << user.favFruit
              << "\n";
     }
 }
@@ -234,17 +295,96 @@ void saveUsers() {
 
 bool usernameTaken(const string& username) {
 
-    string target =
-        toLower(username);
+    return findUser(username) != nullptr;
+}
 
-    for (const User& user : allUsers) {
 
-        if (toLower(user.username) == target) {
-            return true;
+// ============================================================
+// TASK PERSISTENCE
+// ============================================================
+
+void loadTasks() {
+
+    allTasks.clear();
+
+    ifstream file("tasks.txt");
+
+    if (!file.is_open()) {
+        return;
+    }
+
+    string line;
+
+    int highestID = 0;
+
+    while (getline(file, line)) {
+
+        if (line.empty()) {
+            continue;
+        }
+
+        vector<string> parts;
+
+        size_t pos = 0;
+
+        while (true) {
+
+            size_t sep = line.find('|', pos);
+
+            if (sep == string::npos) {
+
+                parts.push_back(line.substr(pos));
+                break;
+            }
+
+            parts.push_back(line.substr(pos, sep - pos));
+
+            pos = sep + 1;
+        }
+
+        // id|username|name|date|time|priority|completed
+        if (parts.size() < 7) {
+            continue;
+        }
+
+        Task task;
+
+        task.id = atoi(parts[0].c_str());
+        task.username = parts[1];
+        task.name = parts[2];
+        task.date = parts[3];
+        task.time = parts[4];
+        task.priority = atoi(parts[5].c_str());
+        task.completed = (parts[6] == "1");
+
+        allTasks.push_back(task);
+
+        priorityQueue.push(task);
+
+        if (task.id > highestID) {
+            highestID = task.id;
         }
     }
 
-    return false;
+    nextID = highestID + 1;
+}
+
+
+void saveTasks() {
+
+    ofstream file("tasks.txt", ios::trunc);
+
+    for (const Task& task : allTasks) {
+
+        file << task.id << "|"
+             << task.username << "|"
+             << task.name << "|"
+             << task.date << "|"
+             << task.time << "|"
+             << task.priority << "|"
+             << (task.completed ? "1" : "0")
+             << "\n";
+    }
 }
 
 
@@ -292,8 +432,11 @@ string urlDecode(string value) {
 
 
 // ============================================================
-// GET VALUE FROM FORM DATA
+// GET VALUE FROM FORM DATA OR QUERY STRING
 // ============================================================
+// Works for both a POST body ("a=1&b=2") and the query string
+// of a GET request line ("GET /tasks?a=1&b=2 HTTP/1.1"), since
+// it just looks for "key=" and reads until the next "&".
 
 string getValue(
     const string& body,
@@ -301,10 +444,23 @@ string getValue(
 ) {
 
     string searchKey = key + "=";
+    size_t start = body.find(searchKey);
 
-    size_t start =
-        body.find(searchKey);
+    while (start != string::npos) {
 
+        // Make sure we matched a real key boundary, not the tail
+        // of a longer key name (e.g. "username" inside
+        // "newUsername").
+        if (
+            start == 0 ||
+            body[start - 1] == '&' ||
+            body[start - 1] == '?'
+        ) {
+            break;
+        }
+
+        start = body.find(searchKey, start + 1);
+    }
 
     if (start == string::npos) {
 
@@ -315,13 +471,19 @@ string getValue(
     start += searchKey.length();
 
 
-    size_t end =
-        body.find("&", start);
-
+    size_t end = body.find("&", start);
 
     if (end == string::npos) {
 
         end = body.length();
+    }
+
+    // A GET request line also has " HTTP/1.1" trailing after
+    // the query string - strip that off if present.
+    size_t space = body.find(" ", start);
+
+    if (space != string::npos && space < end) {
+        end = space;
     }
 
 
@@ -408,12 +570,25 @@ string signupUser(const string& body) {
     string password =
         getValue(body, "password");
 
+    string favColor =
+        getValue(body, "favColor");
+
+    string favFruit =
+        getValue(body, "favFruit");
+
 
     if (username.empty() || password.empty()) {
 
         return
             "{\"success\":false,"
             "\"message\":\"Username and password are required.\"}";
+    }
+
+    if (favColor.empty() || favFruit.empty()) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"Please choose your favourite colour and fruit.\"}";
     }
 
     if (password.length() < 6) {
@@ -433,8 +608,10 @@ string signupUser(const string& body) {
 
     User user;
 
-    user.username = username;
+    user.username = sanitizeField(username);
     user.passwordHash = hashPassword(password);
+    user.favColor = sanitizeField(toLower(favColor));
+    user.favFruit = sanitizeField(toLower(favFruit));
 
     allUsers.push_back(user);
 
@@ -445,7 +622,7 @@ string signupUser(const string& body) {
         "{"
         "\"success\":true,"
         "\"message\":\"Account created successfully.\","
-        "\"username\":\"" + jsonEscape(username) + "\""
+        "\"username\":\"" + jsonEscape(user.username) + "\""
         "}";
 }
 
@@ -462,33 +639,28 @@ string loginUser(const string& body) {
     string password =
         getValue(body, "password");
 
-    string target =
-        toLower(username);
+    User* user = findUser(username);
 
+    if (!user) {
 
-    for (User& user : allUsers) {
+        return
+            "{\"success\":false,"
+            "\"message\":\"No account found with that username.\"}";
+    }
 
-        if (toLower(user.username) == target) {
+    if (user->passwordHash != hashPassword(password)) {
 
-            if (user.passwordHash == hashPassword(password)) {
-
-                return
-                    "{"
-                    "\"success\":true,"
-                    "\"message\":\"Login successful.\","
-                    "\"username\":\"" + jsonEscape(user.username) + "\""
-                    "}";
-            }
-
-            return
-                "{\"success\":false,"
-                "\"message\":\"Incorrect password.\"}";
-        }
+        return
+            "{\"success\":false,"
+            "\"message\":\"Incorrect password.\"}";
     }
 
     return
-        "{\"success\":false,"
-        "\"message\":\"No account found with that username.\"}";
+        "{"
+        "\"success\":true,"
+        "\"message\":\"Login successful.\","
+        "\"username\":\"" + jsonEscape(user->username) + "\""
+        "}";
 }
 
 
@@ -526,38 +698,50 @@ string updateUsername(const string& body) {
     }
 
 
-    for (User& user : allUsers) {
+    User* user = findUser(currentUsername);
 
-        if (toLower(user.username) == toLower(currentUsername)) {
+    if (!user) {
 
-            if (user.passwordHash != hashPassword(password)) {
+        return
+            "{\"success\":false,"
+            "\"message\":\"User not found.\"}";
+    }
 
-                return
-                    "{\"success\":false,"
-                    "\"message\":\"Incorrect password.\"}";
-            }
+    if (user->passwordHash != hashPassword(password)) {
 
-            user.username = newUsername;
+        return
+            "{\"success\":false,"
+            "\"message\":\"Incorrect password.\"}";
+    }
 
-            saveUsers();
+    string oldUsername = user->username;
 
-            return
-                "{"
-                "\"success\":true,"
-                "\"message\":\"Username updated.\","
-                "\"username\":\"" + jsonEscape(newUsername) + "\""
-                "}";
+    user->username = sanitizeField(newUsername);
+
+    saveUsers();
+
+    // Keep every existing reminder attached to the renamed
+    // account so nothing "disappears" after a rename.
+    for (Task& task : allTasks) {
+
+        if (toLower(task.username) == toLower(oldUsername)) {
+            task.username = user->username;
         }
     }
 
+    saveTasks();
+
     return
-        "{\"success\":false,"
-        "\"message\":\"User not found.\"}";
+        "{"
+        "\"success\":true,"
+        "\"message\":\"Username updated.\","
+        "\"username\":\"" + jsonEscape(user->username) + "\""
+        "}";
 }
 
 
 // ============================================================
-// UPDATE PASSWORD
+// UPDATE PASSWORD (while logged in, knows current password)
 // ============================================================
 
 string updatePassword(const string& body) {
@@ -579,31 +763,147 @@ string updatePassword(const string& body) {
             "\"message\":\"New password must be at least 6 characters.\"}";
     }
 
+    User* user = findUser(username);
 
-    for (User& user : allUsers) {
+    if (!user) {
 
-        if (toLower(user.username) == toLower(username)) {
-
-            if (user.passwordHash != hashPassword(currentPassword)) {
-
-                return
-                    "{\"success\":false,"
-                    "\"message\":\"Current password is incorrect.\"}";
-            }
-
-            user.passwordHash = hashPassword(newPassword);
-
-            saveUsers();
-
-            return
-                "{\"success\":true,"
-                "\"message\":\"Password updated.\"}";
-        }
+        return
+            "{\"success\":false,"
+            "\"message\":\"User not found.\"}";
     }
 
+    if (user->passwordHash != hashPassword(currentPassword)) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"Current password is incorrect.\"}";
+    }
+
+    user->passwordHash = hashPassword(newPassword);
+
+    saveUsers();
+
     return
-        "{\"success\":false,"
-        "\"message\":\"User not found.\"}";
+        "{\"success\":true,"
+        "\"message\":\"Password updated.\"}";
+}
+
+
+// ============================================================
+// FORGOT PASSWORD (reset using favourite colour + favourite fruit)
+// ============================================================
+
+string forgotPasswordReset(const string& body) {
+
+    string username =
+        getValue(body, "username");
+
+    string favColor =
+        getValue(body, "favColor");
+
+    string favFruit =
+        getValue(body, "favFruit");
+
+    string newPassword =
+        getValue(body, "newPassword");
+
+
+    if (username.empty() || favColor.empty() || favFruit.empty()) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"Please fill all fields.\"}";
+    }
+
+    if (newPassword.length() < 6) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"New password must be at least 6 characters.\"}";
+    }
+
+    User* user = findUser(username);
+
+    if (!user) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"No account found with that username.\"}";
+    }
+
+    bool colorMatches =
+        toLower(user->favColor) == toLower(favColor);
+
+    bool fruitMatches =
+        toLower(user->favFruit) == toLower(favFruit);
+
+    if (!colorMatches || !fruitMatches) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"Your favourite colour and fruit did not match our records.\"}";
+    }
+
+    user->passwordHash = hashPassword(newPassword);
+
+    saveUsers();
+
+    return
+        "{\"success\":true,"
+        "\"message\":\"Password reset. You can log in now.\"}";
+}
+
+
+// ============================================================
+// UPDATE SECURITY QUESTIONS (fav colour / fav fruit)
+// ============================================================
+
+string updateSecurity(const string& body) {
+
+    string username =
+        getValue(body, "username");
+
+    string currentPassword =
+        getValue(body, "currentPassword");
+
+    string favColor =
+        getValue(body, "favColor");
+
+    string favFruit =
+        getValue(body, "favFruit");
+
+
+    if (favColor.empty() || favFruit.empty()) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"Please choose your favourite colour and fruit.\"}";
+    }
+
+    User* user = findUser(username);
+
+    if (!user) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"User not found.\"}";
+    }
+
+    if (user->passwordHash != hashPassword(currentPassword)) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"Current password is incorrect.\"}";
+    }
+
+    user->favColor = sanitizeField(toLower(favColor));
+    user->favFruit = sanitizeField(toLower(favFruit));
+
+    saveUsers();
+
+    return
+        "{\"success\":true,"
+        "\"message\":\"Security questions updated.\"}";
 }
 
 
@@ -614,6 +914,9 @@ string updatePassword(const string& body) {
 string addTask(
     const string& body
 ) {
+
+    string username =
+        getValue(body, "username");
 
     string name =
         getValue(body, "name");
@@ -626,6 +929,13 @@ string addTask(
 
     string priorityText =
         getValue(body, "priority");
+
+    if (username.empty()) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"You must be logged in to add a reminder.\"}";
+    }
 
     // stoi() throws if priorityText is empty or not a number.
     // That exception was uncaught, which crashed the ENTIRE
@@ -644,9 +954,10 @@ string addTask(
 
     Task task(
         nextID,
-        name,
-        date,
-        time,
+        sanitizeField(username),
+        sanitizeField(name),
+        sanitizeField(date),
+        sanitizeField(time),
         priority
     );
 
@@ -659,9 +970,12 @@ string addTask(
     priorityQueue.push(task);
 
 
-    // Also keep a copy of all tasks
+    // Also keep a copy of all tasks, and persist to disk so
+    // reminders survive a server restart.
 
     allTasks.push_back(task);
+
+    saveTasks();
 
 
     cout << endl;
@@ -681,63 +995,96 @@ string addTask(
 
 
 // ============================================================
-// GET NEXT IMPORTANT TASK
+// COMPLETE TASK (only the owner can complete their own task)
 // ============================================================
 
-string getNextTask() {
+string completeTask(const string& request) {
 
-    if (priorityQueue.empty()) {
+    string idText = getValue(request, "id");
+    string username = getValue(request, "username");
 
-        return
-            "{"
-            "\"success\":false,"
-            "\"message\":\"No reminders\""
-            "}";
+    int id = atoi(idText.c_str());
+
+    for (Task& task : allTasks) {
+
+        if (task.id == id) {
+
+            if (
+                !username.empty() &&
+                toLower(task.username) != toLower(username)
+            ) {
+
+                return
+                    "{\"success\":false,"
+                    "\"message\":\"You do not have permission to update this reminder.\"}";
+            }
+
+            task.completed = true;
+
+            saveTasks();
+
+            return
+                "{\"success\":true,"
+                "\"message\":\"Task marked complete.\"}";
+        }
     }
 
-
-    Task task =
-        priorityQueue.top();
-
-
-    string result =
-
-        "{"
-        "\"success\":true,"
-        "\"task\":{"
-
-        "\"id\":"
-        + to_string(task.id)
-        + ","
-
-        "\"name\":\""
-        + jsonEscape(task.name)
-        + "\","
-
-        "\"date\":\""
-        + jsonEscape(task.date)
-        + "\","
-
-        "\"time\":\""
-        + jsonEscape(task.time)
-        + "\","
-
-        "\"priority\":"
-        + to_string(task.priority)
-
-        + "}"
-        "}";
-
-
-    return result;
+    return
+        "{\"success\":false,"
+        "\"message\":\"Task not found.\"}";
 }
 
 
 // ============================================================
-// GET ALL TASKS
+// DELETE TASK (only the owner can delete their own task)
 // ============================================================
 
-string getAllTasks() {
+string deleteTask(const string& request) {
+
+    string idText = getValue(request, "id");
+    string username = getValue(request, "username");
+
+    int id = atoi(idText.c_str());
+
+    for (size_t i = 0; i < allTasks.size(); i++) {
+
+        if (allTasks[i].id == id) {
+
+            if (
+                !username.empty() &&
+                toLower(allTasks[i].username) != toLower(username)
+            ) {
+
+                return
+                    "{\"success\":false,"
+                    "\"message\":\"You do not have permission to delete this reminder.\"}";
+            }
+
+            allTasks.erase(allTasks.begin() + i);
+
+            saveTasks();
+
+            return
+                "{\"success\":true,"
+                "\"message\":\"Reminder deleted.\"}";
+        }
+    }
+
+    return
+        "{\"success\":false,"
+        "\"message\":\"Task not found.\"}";
+}
+
+
+// ============================================================
+// GET ALL TASKS -- SCOPED TO ONE USER (PRIVACY FIX)
+// ============================================================
+// Previously this returned every reminder ever created, for
+// every user, which is why different accounts all saw the same
+// list. Now it only returns reminders owned by the requesting
+// username.
+
+string getAllTasks(const string& username) {
 
     string result =
 
@@ -745,12 +1092,22 @@ string getAllTasks() {
         "\"success\":true,"
         "\"tasks\":[";
 
+    bool first = true;
 
-    for (int i = 0; i < allTasks.size(); i++) {
+    for (const Task& task : allTasks) {
 
-        Task task =
-            allTasks[i];
+        if (
+            !username.empty() &&
+            toLower(task.username) != toLower(username)
+        ) {
+            continue;
+        }
 
+        if (!first) {
+            result += ",";
+        }
+
+        first = false;
 
         result +=
 
@@ -774,14 +1131,12 @@ string getAllTasks() {
 
             "\"priority\":"
             + to_string(task.priority)
+            + ","
+
+            "\"completed\":"
+            + string(task.completed ? "true" : "false")
 
             + "}";
-
-
-        if (i < allTasks.size() - 1) {
-
-            result += ",";
-        }
     }
 
 
@@ -893,9 +1248,10 @@ if (headerEnd != string::npos) {
     // falls through to "Unknown request" again, this line in
     // the Render logs will show precisely what the server saw
     // (helpful if a proxy/browser sends something unexpected).
+    string firstLine;
     {
         size_t firstLineEnd = request.find("\r\n");
-        string firstLine =
+        firstLine =
             (firstLineEnd == string::npos)
                 ? request
                 : request.substr(0, firstLineEnd);
@@ -1009,24 +1365,6 @@ if (request.find("GET / HTTP") == 0) {
 }
 
 
-    // Find request body
-
-    size_t bodyPosition =
-        request.find("\r\n\r\n");
-
-
-    
-
-
-    if (bodyPosition != string::npos) {
-
-        body =
-            request.substr(
-                bodyPosition + 4
-            );
-    }
-
-
     // SIGNUP
 
     if (
@@ -1099,6 +1437,42 @@ if (request.find("GET / HTTP") == 0) {
     }
 
 
+    // FORGOT PASSWORD (reset via security questions)
+
+    if (
+        request.find("POST /forgot-reset") == 0
+    ) {
+
+        string response =
+            forgotPasswordReset(body);
+
+        sendResponse(
+            client,
+            response
+        );
+
+        return;
+    }
+
+
+    // UPDATE SECURITY QUESTIONS
+
+    if (
+        request.find("POST /update-security") == 0
+    ) {
+
+        string response =
+            updateSecurity(body);
+
+        sendResponse(
+            client,
+            response
+        );
+
+        return;
+    }
+
+
     // ADD TASK
 
     if (
@@ -1117,14 +1491,15 @@ if (request.find("GET / HTTP") == 0) {
     }
 
 
-    // GET NEXT TASK
+    // COMPLETE TASK
 
     if (
-        request.find("GET /next") == 0
+        request.find("POST /complete") == 0 ||
+        request.find("GET /complete") == 0
     ) {
 
         string response =
-            getNextTask();
+            completeTask(firstLine);
 
         sendResponse(
             client,
@@ -1135,14 +1510,41 @@ if (request.find("GET / HTTP") == 0) {
     }
 
 
-    // GET ALL TASKS
+    // DELETE TASK
+
+    if (
+        request.find("POST /delete") == 0 ||
+        request.find("GET /delete") == 0
+    ) {
+
+        string source =
+            request.find("POST /delete") == 0
+                ? body
+                : firstLine;
+
+        string response =
+            deleteTask(source);
+
+        sendResponse(
+            client,
+            response
+        );
+
+        return;
+    }
+
+
+    // GET ALL TASKS FOR THE LOGGED-IN USER (PRIVACY FIX)
 
     if (
         request.find("GET /tasks") == 0
     ) {
 
+        string username =
+            getValue(firstLine, "username");
+
         string response =
-            getAllTasks();
+            getAllTasks(username);
 
         sendResponse(
             client,
@@ -1169,6 +1571,7 @@ if (request.find("GET / HTTP") == 0) {
 int main() {
 
     loadUsers();
+    loadTasks();
 
     int serverSocket =
         socket(
@@ -1260,10 +1663,8 @@ serverAddress.sin_port =
 
     cout << endl;
 
-    cout << "C++ Server running on:"
-         << endl;
-
-    cout << "http://127.0.0.1:8080"
+    cout << "C++ Server running on port "
+         << port
          << endl;
 
     cout << endl;

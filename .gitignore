@@ -1,2 +1,13 @@
+
+# Build artifacts
+*.o
+smartreminder
+main
+
+# Runtime data files created by the server (do NOT commit real user data)
+users.txt
+tasks.txt
+
+# OS/editor junk
 .DS_Store
-*/.DS_Store
+*.swp
