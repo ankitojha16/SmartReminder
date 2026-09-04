@@ -950,3 +950,197 @@ body.dark-theme .schedule-prev-task {
         bottom: 18px;
     }
 }
+
+
+/* =========================================================
+   WEEKLY SCHEDULE
+   ========================================================= */
+
+.modal-content-wide {
+    width: 560px;
+    max-width: 92vw;
+}
+
+.week-tabs {
+    display: flex;
+    gap: 6px;
+    margin-top: 15px;
+    flex-wrap: wrap;
+}
+
+.week-tab {
+    flex: 1;
+    min-width: 60px;
+    padding: 8px 6px;
+    border: 1px solid #d1d5db;
+    background: white;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.week-tab.active {
+    background: #2563eb;
+    color: white;
+    border-color: #2563eb;
+}
+
+.schedule-day-view {
+    margin-top: 18px;
+    min-height: 80px;
+}
+
+.schedule-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f9fafb;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    gap: 12px;
+}
+
+.schedule-row p {
+    color: #6b7280;
+    font-size: 13px;
+    margin-top: 3px;
+}
+
+.schedule-row button {
+    border: none;
+    background: #e0e7ff;
+    color: #2563eb;
+    border-radius: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.edit-day-rows {
+    margin-top: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.edit-row {
+    display: grid;
+    grid-template-columns: 1fr 110px 110px 32px;
+    gap: 6px;
+    align-items: center;
+}
+
+.edit-row input {
+    padding: 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.edit-row-remove {
+    border: none;
+    background: #fee2e2;
+    color: #b91c1c;
+    border-radius: 6px;
+    cursor: pointer;
+    height: 32px;
+}
+
+
+/* =========================================================
+   AI SCHEDULE PREVIEW (Keep / Undo)
+   ========================================================= */
+
+.ai-schedule-preview {
+    background: #eef2ff;
+    border: 1px solid #c7d2fe;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-top: 6px;
+    font-size: 13px;
+    align-self: stretch;
+}
+
+.ai-schedule-preview-row {
+    color: #374151;
+    margin: 2px 0 6px 0;
+}
+
+.ai-schedule-preview-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.ai-schedule-preview-actions button {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.ai-schedule-preview-actions .save {
+    background: #2563eb;
+    color: white;
+}
+
+.ai-schedule-preview-actions button:not(.save) {
+    background: #e5e7eb;
+    color: #374151;
+}
+
+
+/* =========================================================
+   DARK THEME - SCHEDULE
+   ========================================================= */
+
+body.dark-theme .week-tab {
+    background: #1e293b;
+    color: #f8fafc;
+    border-color: #334155;
+}
+
+body.dark-theme .schedule-row {
+    background: #1e293b;
+}
+
+body.dark-theme .schedule-row p {
+    color: #94a3b8;
+}
+
+body.dark-theme .edit-row input {
+    background: #0f172a;
+    color: white;
+    border-color: #334155;
+}
+
+body.dark-theme .ai-schedule-preview {
+    background: #1e293b;
+    border-color: #334155;
+    color: #f8fafc;
+}
+
+body.dark-theme .ai-schedule-preview-row {
+    color: #cbd5e1;
+}
+
+
+/* =========================================================
+   MOBILE - WEEKLY SCHEDULE
+   ========================================================= */
+
+@media (max-width: 768px) {
+
+    .modal-content-wide {
+        width: 92vw;
+    }
+
+    .edit-row {
+        grid-template-columns: 1fr 32px;
+        grid-template-rows: auto auto;
+    }
+}

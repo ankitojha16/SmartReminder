@@ -241,21 +241,21 @@
         <div id="aiChatPanel" class="ai-chat-panel">
 
             <div class="ai-chat-header">
-                <strong>AI Assistant</strong>
+                <strong>Schedule Assistant</strong>
                 <button onclick="toggleAiChat()">✕</button>
             </div>
 
             <div id="aiChatMessages" class="ai-chat-messages">
-                <p class="ai-msg ai-msg-bot">Hi! Tell me what you'd like to plan or remember, and I can help you turn it into reminders.</p>
+                <p class="ai-msg ai-msg-bot">Hi! I can help you plan your day, build a weekly schedule, or turn something into a reminder. I'll stick to your schedule and reminders — ask away.</p>
             </div>
 
             <div class="ai-chat-input-row">
-                <input type="text" id="aiChatInput" placeholder="Ask the AI anything...">
+                <input type="text" id="aiChatInput" placeholder="e.g. Plan my Monday starting at 6am">
                 <button onclick="sendAiChatMessage()">Send</button>
             </div>
 
             <p class="ai-chat-key-row">
-                <a onclick="openAiKeySetup()">Set OpenAI API key</a>
+                <a onclick="openAiKeySetup()">Set Gemini API key</a>
             </p>
 
         </div>
@@ -265,10 +265,10 @@
 
         <div id="aiKeyModal" class="modal">
             <div class="modal-content">
-                <h2>Connect ChatGPT</h2>
-                <p class="modal-hint">Paste your own OpenAI API key. It is stored only in your browser and sent directly from your browser to OpenAI.</p>
-                <label>OpenAI API Key</label>
-                <input type="password" id="aiKeyInput" placeholder="sk-...">
+                <h2>Connect Gemini</h2>
+                <p class="modal-hint">Paste your own Google AI Studio API key. It is stored only in your browser and sent directly from your browser to Google.</p>
+                <label>Gemini API Key</label>
+                <input type="password" id="aiKeyInput" placeholder="AIza...">
                 <div class="modal-buttons">
                     <button onclick="closeAiKeySetup()">Cancel</button>
                     <button class="save" onclick="saveAiKey()">Save</button>
@@ -289,11 +289,11 @@
 
                 <div>
 
-                    <h2>
+                    <h2 id="headerGreeting">
                         Good Morning 👋
                     </h2>
 
-                    <p>
+                    <p id="headerSubtitle">
                         Here are your important reminders.
                     </p>
 
@@ -774,15 +774,123 @@
                 <label id="scheduleTaskLabel">Task after waking up</label>
                 <input type="text" id="scheduleTaskName" placeholder="e.g. Brush teeth">
 
-                <label>Time</label>
-                <input type="time" id="scheduleTaskTime">
+                <label>Start Time</label>
+                <input type="time" id="scheduleTaskStart">
+
+                <label>End Time (optional)</label>
+                <input type="time" id="scheduleTaskEnd">
 
                 <p id="scheduleError" class="auth-error"></p>
 
                 <div class="modal-buttons">
-                    <button onclick="closeDailySchedule()">Done</button>
+                    <button onclick="finishScheduleDay()">Done</button>
                     <button class="save" onclick="addScheduleTask()">Add &amp; Next</button>
                 </div>
+            </div>
+
+            <!-- STEP 3: OFFER TO APPLY TO THE WHOLE WEEK -->
+            <div id="scheduleStepWeekly" style="display:none;">
+
+                <p>Would you like to use this as your schedule for every day this week?</p>
+
+                <div class="modal-buttons">
+                    <button onclick="skipWeeklySchedule()">Not now</button>
+                    <button class="save" onclick="applyWeeklySchedule()">Use for whole week</button>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- WEEKLY SCHEDULE TABLE -->
+
+    <div id="scheduleWeekModal" class="modal">
+
+        <div class="modal-content modal-content-wide">
+
+            <h2>Your Weekly Schedule</h2>
+
+            <div class="week-tabs">
+                <button class="week-tab" data-day="mon" onclick="showScheduleDay('mon')">Mon</button>
+                <button class="week-tab" data-day="tue" onclick="showScheduleDay('tue')">Tue</button>
+                <button class="week-tab" data-day="wed" onclick="showScheduleDay('wed')">Wed</button>
+                <button class="week-tab" data-day="thu" onclick="showScheduleDay('thu')">Thu</button>
+                <button class="week-tab" data-day="fri" onclick="showScheduleDay('fri')">Fri</button>
+                <button class="week-tab" data-day="sat" onclick="showScheduleDay('sat')">Sat</button>
+                <button class="week-tab" data-day="sun" onclick="showScheduleDay('sun')">Sun</button>
+            </div>
+
+            <div id="scheduleWeekDayView" class="schedule-day-view"></div>
+
+            <div class="modal-buttons" style="justify-content: space-between;">
+                <button onclick="applyDayToWholeWeek(activeScheduleDay)">📅 Use this day for the whole week</button>
+                <div style="display:flex; gap:10px;">
+                    <button onclick="closeScheduleWeekView()">Close</button>
+                    <button class="save" onclick="openEditDay()">✏️ Edit This Day</button>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- EDIT ONE DAY OF THE SCHEDULE -->
+
+    <div id="scheduleEditDayModal" class="modal">
+
+        <div class="modal-content modal-content-wide">
+
+            <h2>Edit Schedule</h2>
+
+            <label>Day</label>
+            <select id="editDaySelect" onchange="switchEditDay()">
+                <option value="mon">Monday</option>
+                <option value="tue">Tuesday</option>
+                <option value="wed">Wednesday</option>
+                <option value="thu">Thursday</option>
+                <option value="fri">Friday</option>
+                <option value="sat">Saturday</option>
+                <option value="sun">Sunday</option>
+            </select>
+
+            <div id="editDayRows" class="edit-day-rows"></div>
+
+            <button type="button" onclick="addEditRow()">+ Add Task</button>
+
+            <div class="modal-buttons">
+                <button onclick="closeEditDay()">Cancel</button>
+                <button class="save" onclick="saveEditDay()">Save</button>
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- SAVE A SCHEDULE TASK AS A REMINDER -->
+
+    <div id="scheduleReminderModal" class="modal">
+
+        <div class="modal-content">
+
+            <h2>Save as Reminder</h2>
+
+            <p id="reminderPreviewText" class="modal-hint"></p>
+
+            <label>Priority</label>
+            <select id="reminderFromSchedulePriority">
+                <option value="1">Low</option>
+                <option value="2">Medium</option>
+                <option value="3">High</option>
+                <option value="4">Critical</option>
+            </select>
+
+            <div class="modal-buttons">
+                <button onclick="closeReminderFromSchedule()">Cancel</button>
+                <button class="save" onclick="confirmReminderFromSchedule()">Save</button>
             </div>
 
         </div>

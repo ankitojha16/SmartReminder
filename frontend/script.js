@@ -9,6 +9,31 @@ let currentView = "dashboard";
 
 const AUTH_KEY = "smartReminderUser";
 
+// Set to true right before a fresh signup so the header can say
+// "Welcome" instead of "Welcome back" just this once.
+let justSignedUp = false;
+
+// Daily Schedule data, kept completely separate from `tasks`
+// (reminders). Every schedule item belongs to a day of the week.
+let scheduleData = [];
+let activeScheduleDay = "mon";
+
+const ALL_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
+const DAY_LABELS = {
+    mon: "Monday",
+    tue: "Tuesday",
+    wed: "Wednesday",
+    thu: "Thursday",
+    fri: "Friday",
+    sat: "Saturday",
+    sun: "Sunday"
+};
+
+const DAY_TO_JS_INDEX = {
+    sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6
+};
+
 
 // ==========================================
 // INITIALIZE
@@ -42,6 +67,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         const passwordModal = document.getElementById("passwordModal");
         const securityModal = document.getElementById("securityModal");
         const scheduleModal = document.getElementById("scheduleModal");
+        const scheduleWeekModal = document.getElementById("scheduleWeekModal");
+        const scheduleEditDayModal = document.getElementById("scheduleEditDayModal");
+        const scheduleReminderModal = document.getElementById("scheduleReminderModal");
         const aiKeyModal = document.getElementById("aiKeyModal");
 
         if (event.target === modal) {
@@ -62,6 +90,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         if (event.target === scheduleModal) {
             closeDailySchedule();
+        }
+
+        if (event.target === scheduleWeekModal) {
+            closeScheduleWeekView();
+        }
+
+        if (event.target === scheduleEditDayModal) {
+            closeEditDay();
+        }
+
+        if (event.target === scheduleReminderModal) {
+            closeReminderFromSchedule();
         }
 
         if (event.target === aiKeyModal) {
@@ -1214,6 +1254,26 @@ function showAppScreen(username) {
     }
 
     updateProfileDisplay(username);
+
+    updateGreeting(username);
+}
+
+
+function updateGreeting(username) {
+
+    const greetingEl =
+        document.getElementById("headerGreeting");
+
+    if (!greetingEl) {
+        return;
+    }
+
+    greetingEl.textContent =
+        justSignedUp
+            ? `Welcome, ${username} 👋`
+            : `Welcome back, ${username} 👋`;
+
+    justSignedUp = false;
 }
 
 
@@ -1536,6 +1596,8 @@ async function signupUser() {
         }
 
         localStorage.setItem(AUTH_KEY, result.username);
+
+        justSignedUp = true;
 
         showAppScreen(result.username);
 
@@ -1897,19 +1959,115 @@ async function submitChangeSecurity() {
 
 
 /* =========================================================
-   DAILY SCHEDULE WIZARD
+   DAILY SCHEDULE (separate from reminders)
+
+   Data model: every schedule item belongs to a day of the week
+   (mon..sun). "Just today" is one weekday filled in; "weekly" is
+   all seven. Reminders are never touched by any of this - they
+   live in `tasks` and go through /add, while schedule items live
+   in `scheduleData` and go through /schedule/*.
    ========================================================= */
 
 let scheduleWakeTimeValue = "";
 let scheduleLastTaskName = "";
 let scheduleTaskCount = 0;
+let scheduleWizardDay = "mon";
+let scheduleWizardTasks = [];
 
-function openDailySchedule() {
+
+function getTodayDayAbbrev() {
+
+    const map = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+    return map[new Date().getDay()];
+}
+
+
+function getNextDateForDay(day) {
+
+    const targetIndex = DAY_TO_JS_INDEX[day];
+
+    const today = new Date();
+
+    let diff = targetIndex - today.getDay();
+
+    if (diff < 0) {
+        diff += 7;
+    }
+
+    const result = new Date(today);
+
+    result.setDate(today.getDate() + diff);
+
+    return result.toISOString().slice(0, 10);
+}
+
+
+function escapeHtml(text) {
+
+    const div = document.createElement("div");
+
+    div.textContent = text == null ? "" : String(text);
+
+    return div.innerHTML;
+}
+
+
+async function loadScheduleData() {
+
+    try {
+
+        const username = getLoggedInUser() || "";
+
+        const response =
+            await fetch(
+                `${API}/schedule?username=${encodeURIComponent(username)}`
+            );
+
+        const data = await response.json();
+
+        scheduleData =
+            (data && Array.isArray(data.schedule))
+                ? data.schedule
+                : [];
+
+    }
+    catch (error) {
+
+        console.error("Could not load schedule:", error);
+
+        scheduleData = [];
+    }
+}
+
+
+/* ---------------------------------------------------------
+   ENTRY POINT - sidebar "Daily Schedule" button
+   --------------------------------------------------------- */
+
+async function openDailySchedule() {
+
+    await loadScheduleData();
+
+    if (scheduleData.length > 0) {
+
+        openScheduleWeekView();
+
+        return;
+    }
+
+    startNewScheduleWizard();
+}
+
+
+function startNewScheduleWizard() {
 
     document.getElementById("scheduleModal").style.display = "flex";
 
     document.getElementById("scheduleStepWake").style.display = "block";
     document.getElementById("scheduleStepTasks").style.display = "none";
+    document.getElementById("scheduleStepWeekly").style.display = "none";
+
     document.getElementById("scheduleStepTitle").textContent =
         "Set your wake-up time";
 
@@ -1918,6 +2076,21 @@ function openDailySchedule() {
     scheduleWakeTimeValue = "";
     scheduleLastTaskName = "";
     scheduleTaskCount = 0;
+    scheduleWizardDay = getTodayDayAbbrev();
+    scheduleWizardTasks = [];
+}
+
+
+function startWizardForDay(day) {
+
+    document.getElementById("scheduleWeekModal").style.display = "none";
+
+    startNewScheduleWizard();
+
+    scheduleWizardDay = day;
+
+    document.getElementById("scheduleStepTitle").textContent =
+        `Set a wake-up time for ${DAY_LABELS[day]}`;
 }
 
 
@@ -1926,10 +2099,11 @@ function closeDailySchedule() {
     document.getElementById("scheduleModal").style.display = "none";
 
     document.getElementById("scheduleTaskName").value = "";
-    document.getElementById("scheduleTaskTime").value = "";
+    document.getElementById("scheduleTaskStart").value = "";
+    document.getElementById("scheduleTaskEnd").value = "";
     document.getElementById("scheduleError").textContent = "";
 
-    // Refresh the dashboard so newly added schedule tasks show up
+    // Refresh the dashboard in case the wizard added anything
     showView(currentView);
 }
 
@@ -1957,7 +2131,8 @@ function startScheduleTasks() {
     document.getElementById("scheduleTaskLabel").textContent =
         "Task after waking up";
 
-    document.getElementById("scheduleTaskTime").value = wakeTime;
+    document.getElementById("scheduleTaskStart").value = wakeTime;
+    document.getElementById("scheduleTaskEnd").value = "";
 
     document.getElementById("schedulePrevTask").textContent = "";
 }
@@ -1968,8 +2143,11 @@ async function addScheduleTask() {
     const name =
         document.getElementById("scheduleTaskName").value.trim();
 
-    const time =
-        document.getElementById("scheduleTaskTime").value;
+    const start =
+        document.getElementById("scheduleTaskStart").value;
+
+    const end =
+        document.getElementById("scheduleTaskEnd").value;
 
     const errorEl =
         document.getElementById("scheduleError");
@@ -1977,20 +2155,619 @@ async function addScheduleTask() {
     errorEl.textContent = "";
 
 
-    if (!name || !time) {
+    if (!name || !start) {
 
         errorEl.textContent =
-            "Please enter a task name and time.";
+            "Please enter a task name and a start time.";
 
         return;
     }
 
 
-    const today = new Date();
+    try {
 
-    const isoDate =
-        today.toISOString().slice(0, 10);
+        const response =
+            await fetch(`${API}/schedule/add`, {
 
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+
+                body:
+                    new URLSearchParams({
+                        username: getLoggedInUser() || "",
+                        day: scheduleWizardDay,
+                        name: name,
+                        startTime: start,
+                        endTime: end
+                    })
+            });
+
+        const result =
+            await response.json();
+
+        if (!result.success) {
+
+            errorEl.textContent =
+                result.message || "Could not save that task.";
+
+            return;
+        }
+
+        scheduleWizardTasks.push({
+            id: result.id,
+            name: name,
+            startTime: start,
+            endTime: end
+        });
+
+        // Faded preview of the task that was just entered, shown
+        // while the user types the next one
+        scheduleLastTaskName = name;
+        scheduleTaskCount++;
+
+        document.getElementById("schedulePrevTask").textContent =
+            `Last: ${scheduleLastTaskName}`;
+
+        document.getElementById("scheduleTaskLabel").textContent =
+            `Task ${scheduleTaskCount + 1} (after "${scheduleLastTaskName}")`;
+
+        document.getElementById("scheduleTaskName").value = "";
+
+        // Chain the next task's start time onto this one's end
+        // time (falling back to its own start) so the user isn't
+        // stuck re-entering the same time over and over.
+        document.getElementById("scheduleTaskStart").value =
+            end || start;
+
+        document.getElementById("scheduleTaskEnd").value = "";
+
+        document.getElementById("scheduleTaskName").focus();
+
+    }
+    catch (error) {
+
+        console.error("Schedule task error:", error);
+
+        errorEl.textContent =
+            "Could not connect to the server.";
+    }
+}
+
+
+function finishScheduleDay() {
+
+    if (scheduleWizardTasks.length === 0) {
+
+        closeDailySchedule();
+
+        return;
+    }
+
+    document.getElementById("scheduleStepTasks").style.display = "none";
+    document.getElementById("scheduleStepWeekly").style.display = "block";
+
+    document.getElementById("scheduleStepTitle").textContent =
+        "One more thing";
+}
+
+
+async function skipWeeklySchedule() {
+
+    document.getElementById("scheduleModal").style.display = "none";
+
+    await loadScheduleData();
+
+    openScheduleWeekView();
+}
+
+
+async function applyWeeklySchedule() {
+
+    const username = getLoggedInUser() || "";
+
+    const otherDays =
+        ALL_DAYS.filter(day => day !== scheduleWizardDay);
+
+    try {
+
+        for (const day of otherDays) {
+
+            for (const task of scheduleWizardTasks) {
+
+                await fetch(`${API}/schedule/add`, {
+
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/x-www-form-urlencoded"
+                    },
+
+                    body:
+                        new URLSearchParams({
+                            username: username,
+                            day: day,
+                            name: task.name,
+                            startTime: task.startTime,
+                            endTime: task.endTime || ""
+                        })
+                });
+            }
+        }
+
+    }
+    catch (error) {
+
+        console.error("Apply weekly schedule error:", error);
+
+        alert("Could not copy this schedule to every day. Please try again.");
+    }
+
+    document.getElementById("scheduleModal").style.display = "none";
+
+    await loadScheduleData();
+
+    openScheduleWeekView();
+}
+
+
+/* ---------------------------------------------------------
+   WEEKLY TABLE VIEW
+   --------------------------------------------------------- */
+
+function openScheduleWeekView() {
+
+    document.getElementById("scheduleWeekModal").style.display = "flex";
+
+    activeScheduleDay = getTodayDayAbbrev();
+
+    renderWeekTabs();
+    renderScheduleDay(activeScheduleDay);
+}
+
+
+function closeScheduleWeekView() {
+
+    document.getElementById("scheduleWeekModal").style.display = "none";
+
+    showView(currentView);
+}
+
+
+function renderWeekTabs() {
+
+    document.querySelectorAll(".week-tab").forEach(button => {
+
+        button.classList.toggle(
+            "active",
+            button.dataset.day === activeScheduleDay
+        );
+    });
+}
+
+
+function showScheduleDay(day) {
+
+    activeScheduleDay = day;
+
+    renderWeekTabs();
+    renderScheduleDay(day);
+}
+
+
+function renderScheduleDay(day) {
+
+    const container =
+        document.getElementById("scheduleWeekDayView");
+
+    if (!container) {
+        return;
+    }
+
+    const dayTasks =
+        scheduleData
+            .filter(task => task.day === day)
+            .sort((a, b) =>
+                (a.startTime || "").localeCompare(b.startTime || "")
+            );
+
+    if (dayTasks.length === 0) {
+
+        container.innerHTML =
+            `<p class="empty">Nothing planned for ${DAY_LABELS[day]} yet.</p>` +
+            `<button class="save" onclick="startWizardForDay('${day}')">+ Plan this day</button>`;
+
+        return;
+    }
+
+    container.innerHTML = "";
+
+    dayTasks.forEach(task => {
+
+        const row =
+            document.createElement("div");
+
+        row.className = "schedule-row";
+
+        const info =
+            document.createElement("div");
+
+        info.innerHTML =
+            `<strong>${escapeHtml(task.name)}</strong>` +
+            `<p>${escapeHtml(task.startTime)}` +
+            (task.endTime ? ` – ${escapeHtml(task.endTime)}` : "") +
+            `</p>`;
+
+        const remindButton =
+            document.createElement("button");
+
+        remindButton.textContent = "🔔 Remind";
+
+        remindButton.onclick = function () {
+            openReminderFromSchedule(task);
+        };
+
+        row.appendChild(info);
+        row.appendChild(remindButton);
+
+        container.appendChild(row);
+    });
+}
+
+
+async function applyDayToWholeWeek(sourceDay) {
+
+    const sourceTasks =
+        scheduleData.filter(task => task.day === sourceDay);
+
+    if (sourceTasks.length === 0) {
+
+        alert(`${DAY_LABELS[sourceDay]} has no tasks to copy yet.`);
+
+        return;
+    }
+
+    const confirmed =
+        confirm(
+            `Copy ${DAY_LABELS[sourceDay]}'s schedule to every other ` +
+            `day of the week? This replaces whatever is currently on ` +
+            `those days.`
+        );
+
+    if (!confirmed) {
+        return;
+    }
+
+    const username = getLoggedInUser() || "";
+
+    const otherDays =
+        ALL_DAYS.filter(day => day !== sourceDay);
+
+    try {
+
+        for (const day of otherDays) {
+
+            const existingIds =
+                scheduleData
+                    .filter(task => task.day === day)
+                    .map(task => task.id);
+
+            for (const id of existingIds) {
+
+                await fetch(`${API}/schedule/delete`, {
+
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/x-www-form-urlencoded"
+                    },
+
+                    body:
+                        new URLSearchParams({
+                            id: String(id),
+                            username: username
+                        })
+                });
+            }
+
+            for (const task of sourceTasks) {
+
+                await fetch(`${API}/schedule/add`, {
+
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/x-www-form-urlencoded"
+                    },
+
+                    body:
+                        new URLSearchParams({
+                            username: username,
+                            day: day,
+                            name: task.name,
+                            startTime: task.startTime,
+                            endTime: task.endTime || ""
+                        })
+                });
+            }
+        }
+
+        await loadScheduleData();
+
+        renderScheduleDay(activeScheduleDay);
+
+        alert("Applied to the whole week.");
+
+    }
+    catch (error) {
+
+        console.error("Apply to whole week error:", error);
+
+        alert("Could not update every day. Please try again.");
+    }
+}
+
+
+/* ---------------------------------------------------------
+   EDIT ONE DAY
+   --------------------------------------------------------- */
+
+let editDayTasks = [];
+
+
+function openEditDay() {
+
+    document.getElementById("scheduleWeekModal").style.display = "none";
+    document.getElementById("scheduleEditDayModal").style.display = "flex";
+
+    document.getElementById("editDaySelect").value = activeScheduleDay;
+
+    loadEditDayTasks(activeScheduleDay);
+}
+
+
+function loadEditDayTasks(day) {
+
+    editDayTasks =
+        scheduleData
+            .filter(task => task.day === day)
+            .map(task => ({
+                id: task.id,
+                name: task.name,
+                startTime: task.startTime,
+                endTime: task.endTime
+            }))
+            .sort((a, b) =>
+                (a.startTime || "").localeCompare(b.startTime || "")
+            );
+
+    renderEditDayRows();
+}
+
+
+function switchEditDay() {
+
+    const day =
+        document.getElementById("editDaySelect").value;
+
+    loadEditDayTasks(day);
+}
+
+
+function renderEditDayRows() {
+
+    const container =
+        document.getElementById("editDayRows");
+
+    container.innerHTML = "";
+
+    editDayTasks.forEach((task, index) => {
+
+        const row =
+            document.createElement("div");
+
+        row.className = "edit-row";
+
+        const nameInput =
+            document.createElement("input");
+
+        nameInput.type = "text";
+        nameInput.placeholder = "Task name";
+        nameInput.value = task.name;
+
+        nameInput.oninput = function (event) {
+            editDayTasks[index].name = event.target.value;
+        };
+
+        const startInput =
+            document.createElement("input");
+
+        startInput.type = "time";
+        startInput.value = task.startTime || "";
+
+        startInput.oninput = function (event) {
+            editDayTasks[index].startTime = event.target.value;
+        };
+
+        const endInput =
+            document.createElement("input");
+
+        endInput.type = "time";
+        endInput.value = task.endTime || "";
+
+        endInput.oninput = function (event) {
+            editDayTasks[index].endTime = event.target.value;
+        };
+
+        const removeButton =
+            document.createElement("button");
+
+        removeButton.type = "button";
+        removeButton.className = "edit-row-remove";
+        removeButton.textContent = "✕";
+
+        removeButton.onclick = function () {
+            editDayTasks.splice(index, 1);
+            renderEditDayRows();
+        };
+
+        row.appendChild(nameInput);
+        row.appendChild(startInput);
+        row.appendChild(endInput);
+        row.appendChild(removeButton);
+
+        container.appendChild(row);
+    });
+}
+
+
+function addEditRow() {
+
+    editDayTasks.push({
+        id: null,
+        name: "",
+        startTime: "",
+        endTime: ""
+    });
+
+    renderEditDayRows();
+}
+
+
+function closeEditDay() {
+
+    document.getElementById("scheduleEditDayModal").style.display = "none";
+    document.getElementById("scheduleWeekModal").style.display = "flex";
+}
+
+
+async function saveEditDay() {
+
+    const day =
+        document.getElementById("editDaySelect").value;
+
+    const username = getLoggedInUser() || "";
+
+    const validTasks =
+        editDayTasks.filter(task => task.name.trim() && task.startTime);
+
+    try {
+
+        // Replace the day wholesale: remove every existing row for
+        // it, then re-add the edited list. Simple and avoids ever
+        // getting out of sync with what's on screen.
+        const existingIds =
+            scheduleData
+                .filter(task => task.day === day)
+                .map(task => task.id);
+
+        for (const id of existingIds) {
+
+            await fetch(`${API}/schedule/delete`, {
+
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+
+                body:
+                    new URLSearchParams({
+                        id: String(id),
+                        username: username
+                    })
+            });
+        }
+
+        for (const task of validTasks) {
+
+            await fetch(`${API}/schedule/add`, {
+
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+
+                body:
+                    new URLSearchParams({
+                        username: username,
+                        day: day,
+                        name: task.name.trim(),
+                        startTime: task.startTime,
+                        endTime: task.endTime || ""
+                    })
+            });
+        }
+
+        await loadScheduleData();
+
+        closeEditDay();
+
+        activeScheduleDay = day;
+
+        renderWeekTabs();
+        renderScheduleDay(day);
+
+    }
+    catch (error) {
+
+        console.error("Save schedule day error:", error);
+
+        alert("Could not save your changes. Please try again.");
+    }
+}
+
+
+/* ---------------------------------------------------------
+   SAVE A SCHEDULE TASK AS A REMINDER
+   --------------------------------------------------------- */
+
+let reminderFromScheduleTask = null;
+
+
+function openReminderFromSchedule(task) {
+
+    reminderFromScheduleTask = task;
+
+    const date = getNextDateForDay(task.day);
+
+    document.getElementById("reminderPreviewText").textContent =
+        `${task.name} — ${DAY_LABELS[task.day]} (${date}) at ${task.startTime}`;
+
+    document.getElementById("reminderFromSchedulePriority").value = "2";
+
+    document.getElementById("scheduleReminderModal").style.display = "flex";
+}
+
+
+function closeReminderFromSchedule() {
+
+    document.getElementById("scheduleReminderModal").style.display = "none";
+
+    reminderFromScheduleTask = null;
+}
+
+
+async function confirmReminderFromSchedule() {
+
+    if (!reminderFromScheduleTask) {
+        return;
+    }
+
+    const priority =
+        document.getElementById("reminderFromSchedulePriority").value;
+
+    const date =
+        getNextDateForDay(reminderFromScheduleTask.day);
 
     try {
 
@@ -2006,12 +2783,11 @@ async function addScheduleTask() {
 
                 body:
                     new URLSearchParams({
-                        username:
-                            getLoggedInUser() || "",
-                        name: name,
-                        date: isoDate,
-                        time: time,
-                        priority: "2"
+                        username: getLoggedInUser() || "",
+                        name: reminderFromScheduleTask.name,
+                        date: date,
+                        time: reminderFromScheduleTask.startTime,
+                        priority: priority
                     })
             });
 
@@ -2020,59 +2796,71 @@ async function addScheduleTask() {
 
         if (!result.success) {
 
-            errorEl.textContent =
-                "Could not save that task.";
+            alert("Could not save that reminder.");
 
             return;
         }
 
         tasks.push({
             id: result.id,
-            name: name,
-            date: isoDate,
-            time: time,
-            priority: 2,
+            name: reminderFromScheduleTask.name,
+            date: date,
+            time: reminderFromScheduleTask.startTime,
+            priority: Number(priority),
             completed: false
         });
 
         normalizeTasks();
 
         updateStatistics();
-
         updateNextTask();
 
+        closeReminderFromSchedule();
 
-        // Faded preview of the task that was just entered, shown
-        // while the user types the next one
-        scheduleLastTaskName = name;
-        scheduleTaskCount++;
-
-        document.getElementById("schedulePrevTask").textContent =
-            `Last: ${scheduleLastTaskName}`;
-
-        document.getElementById("scheduleTaskLabel").textContent =
-            `Task ${scheduleTaskCount + 1} (after "${scheduleLastTaskName}")`;
-
-        document.getElementById("scheduleTaskName").value = "";
-
-        document.getElementById("scheduleTaskName").focus();
+        alert("Saved as a reminder.");
 
     }
     catch (error) {
 
-        console.error("Schedule task error:", error);
+        console.error("Reminder from schedule error:", error);
 
-        errorEl.textContent =
-            "Could not connect to the server.";
+        alert("Could not connect to the server.");
     }
 }
 
 
 /* =========================================================
-   AI ASSISTANT (ChatGPT)
+   AI ASSISTANT (Google Gemini) - schedule & reminders only
+
+   The key is stored only in the browser (same bring-your-own-key
+   pattern as before) and sent straight to Google. When the model
+   proposes a day plan, it's asked to end its reply with a fenced
+   ```schedule``` block of JSON; we parse that into a preview card
+   with Keep/Undo instead of ever touching the saved schedule
+   silently.
    ========================================================= */
 
-const AI_KEY_STORAGE = "smartReminderAiKey";
+const AI_KEY_STORAGE = "smartReminderGeminiKey";
+
+const GEMINI_MODEL = "gemini-2.0-flash";
+
+const GEMINI_ENDPOINT =
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
+const AI_SYSTEM_PROMPT =
+    "You are the built-in assistant inside a reminder and daily-schedule app called Smart Reminder. " +
+    "Only help with planning the user's day, building or adjusting their weekly schedule, and turning " +
+    "things into reminders. Politely decline anything unrelated to scheduling, reminders, or daily " +
+    "planning, and steer the conversation back to those topics. Keep replies short and practical.\n\n" +
+    "Whenever the user asks you to build or change a day plan or schedule, end your reply with a " +
+    "fenced block exactly like this, with nothing else inside it:\n" +
+    "```schedule\n" +
+    "[{\"day\":\"mon\",\"name\":\"Wake up\",\"start\":\"06:00\",\"end\":\"06:15\"}]\n" +
+    "```\n" +
+    "Use lowercase three-letter day codes (mon, tue, wed, thu, fri, sat, sun), 24-hour \"HH:MM\" times, " +
+    "and one object per task. Only include the day(s) the user actually asked about - don't invent " +
+    "extra days. If you are not proposing a schedule, omit the fenced block entirely.";
+
 
 function toggleAiChat() {
 
@@ -2128,6 +2916,231 @@ function appendAiMessage(text, who) {
     container.appendChild(bubble);
 
     container.scrollTop = container.scrollHeight;
+
+    return bubble;
+}
+
+
+function extractScheduleBlock(text) {
+
+    const match = text.match(/```schedule\s*([\s\S]*?)```/i);
+
+    if (!match) {
+
+        return { cleanText: text.trim(), items: null };
+    }
+
+    const cleanText =
+        (text.slice(0, match.index) +
+         text.slice(match.index + match[0].length)).trim();
+
+    let items = null;
+
+    try {
+
+        const parsed = JSON.parse(match[1].trim());
+
+        if (Array.isArray(parsed)) {
+
+            items =
+                parsed
+                    .filter(item => item && item.day && item.name && item.start)
+                    .map(item => ({
+                        day: String(item.day).toLowerCase().slice(0, 3),
+                        name: String(item.name),
+                        startTime: String(item.start),
+                        endTime: item.end ? String(item.end) : ""
+                    }))
+                    .filter(item => ALL_DAYS.includes(item.day));
+        }
+
+    }
+    catch (error) {
+
+        console.error("Could not parse AI schedule block:", error);
+    }
+
+    return { cleanText, items };
+}
+
+
+function renderAiSchedulePreview(items) {
+
+    const container =
+        document.getElementById("aiChatMessages");
+
+    const card =
+        document.createElement("div");
+
+    card.className = "ai-schedule-preview";
+
+    const title =
+        document.createElement("strong");
+
+    title.textContent = "Suggested schedule";
+
+    card.appendChild(title);
+
+    const byDay = {};
+
+    items.forEach(item => {
+
+        if (!byDay[item.day]) {
+            byDay[item.day] = [];
+        }
+
+        byDay[item.day].push(item);
+    });
+
+    Object.keys(byDay).forEach(day => {
+
+        const dayLine =
+            document.createElement("p");
+
+        dayLine.innerHTML =
+            `<strong>${DAY_LABELS[day] || day}</strong>`;
+
+        card.appendChild(dayLine);
+
+        byDay[day].forEach(item => {
+
+            const line =
+                document.createElement("p");
+
+            line.className = "ai-schedule-preview-row";
+
+            line.textContent =
+                `${item.startTime}` +
+                (item.endTime ? `–${item.endTime}` : "") +
+                ` · ${item.name}`;
+
+            card.appendChild(line);
+        });
+    });
+
+    const actions =
+        document.createElement("div");
+
+    actions.className = "ai-schedule-preview-actions";
+
+    const keepButton =
+        document.createElement("button");
+
+    keepButton.className = "save";
+    keepButton.textContent = "Keep";
+
+    const undoButton =
+        document.createElement("button");
+
+    undoButton.textContent = "Undo";
+
+    keepButton.onclick = async function () {
+
+        keepButton.disabled = true;
+        undoButton.disabled = true;
+
+        await applyAiSchedule(items);
+
+        card.remove();
+
+        appendAiMessage("Done — your schedule has been updated.", "bot");
+    };
+
+    undoButton.onclick = function () {
+
+        card.remove();
+
+        appendAiMessage("No problem — I left your schedule as it was.", "bot");
+    };
+
+    actions.appendChild(keepButton);
+    actions.appendChild(undoButton);
+
+    card.appendChild(actions);
+
+    container.appendChild(card);
+
+    container.scrollTop = container.scrollHeight;
+}
+
+
+async function applyAiSchedule(items) {
+
+    const username = getLoggedInUser() || "";
+
+    await loadScheduleData();
+
+    const affectedDays =
+        [...new Set(items.map(item => item.day))];
+
+    try {
+
+        for (const day of affectedDays) {
+
+            const existingIds =
+                scheduleData
+                    .filter(task => task.day === day)
+                    .map(task => task.id);
+
+            for (const id of existingIds) {
+
+                await fetch(`${API}/schedule/delete`, {
+
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/x-www-form-urlencoded"
+                    },
+
+                    body:
+                        new URLSearchParams({
+                            id: String(id),
+                            username: username
+                        })
+                });
+            }
+        }
+
+        for (const item of items) {
+
+            await fetch(`${API}/schedule/add`, {
+
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+
+                body:
+                    new URLSearchParams({
+                        username: username,
+                        day: item.day,
+                        name: item.name,
+                        startTime: item.startTime,
+                        endTime: item.endTime || ""
+                    })
+            });
+        }
+
+        await loadScheduleData();
+
+        const weekModal =
+            document.getElementById("scheduleWeekModal");
+
+        if (weekModal && weekModal.style.display === "flex") {
+
+            renderScheduleDay(activeScheduleDay);
+        }
+
+    }
+    catch (error) {
+
+        console.error("Apply AI schedule error:", error);
+
+        appendAiMessage("I couldn't save that schedule — please try again.", "bot");
+    }
 }
 
 
@@ -2152,49 +3165,40 @@ async function sendAiChatMessage() {
     if (!apiKey) {
 
         appendAiMessage(
-            "Add your OpenAI API key first (link below the chat box), then ask me again.",
+            "Add your Gemini API key first (link below the chat box), then ask me again.",
             "bot"
         );
 
         return;
     }
 
-    appendAiMessage("Thinking...", "bot");
+    const thinkingBubble =
+        appendAiMessage("Thinking...", "bot");
 
     try {
 
         const response =
-            await fetch("https://api.openai.com/v1/chat/completions", {
+            await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
 
                 method: "POST",
 
                 headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${apiKey}`
+                    "Content-Type": "application/json"
                 },
 
                 body: JSON.stringify({
-                    model: "gpt-4o-mini",
-                    messages: [
-                        {
-                            role: "system",
-                            content:
-                                "You are a helpful assistant inside a reminder app called Smart Reminder. " +
-                                "Help the user plan their day and turn what they ask for into clear, " +
-                                "short suggested reminders (name, date, time, priority). Keep replies brief."
-                        },
-                        { role: "user", content: text }
+                    systemInstruction: {
+                        parts: [{ text: AI_SYSTEM_PROMPT }]
+                    },
+                    contents: [
+                        { role: "user", parts: [{ text: text }] }
                     ]
                 })
             });
 
         const data = await response.json();
 
-        // Remove the "Thinking..." placeholder
-        const messages =
-            document.getElementById("aiChatMessages");
-
-        messages.removeChild(messages.lastChild);
+        thinkingBubble.remove();
 
         if (data.error) {
 
@@ -2207,25 +3211,40 @@ async function sendAiChatMessage() {
         }
 
         const reply =
-            data.choices &&
-            data.choices[0] &&
-            data.choices[0].message &&
-            data.choices[0].message.content;
+            data.candidates &&
+            data.candidates[0] &&
+            data.candidates[0].content &&
+            data.candidates[0].content.parts &&
+            data.candidates[0].content.parts
+                .map(part => part.text || "")
+                .join("");
 
-        appendAiMessage(
-            reply || "Sorry, I didn't get a response.",
-            "bot"
-        );
+        if (!reply) {
+
+            appendAiMessage(
+                "Sorry, I didn't get a response.",
+                "bot"
+            );
+
+            return;
+        }
+
+        const { cleanText, items } = extractScheduleBlock(reply);
+
+        if (cleanText) {
+            appendAiMessage(cleanText, "bot");
+        }
+
+        if (items && items.length > 0) {
+            renderAiSchedulePreview(items);
+        }
 
     }
     catch (error) {
 
         console.error("AI chat error:", error);
 
-        const messages =
-            document.getElementById("aiChatMessages");
-
-        messages.removeChild(messages.lastChild);
+        thinkingBubble.remove();
 
         appendAiMessage(
             "Could not reach the AI service.",

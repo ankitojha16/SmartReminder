@@ -389,6 +389,123 @@ void saveTasks() {
 
 
 // ============================================================
+// DAILY SCHEDULE (kept completely separate from reminders)
+// ============================================================
+// A schedule item always belongs to a day of the week ("mon"
+// .. "sun"). A "just for today" schedule is simply one weekday
+// populated; a "weekly" schedule is all seven populated. This
+// keeps one simple data model for both cases.
+
+struct ScheduleTask {
+
+    int id;
+    string username;
+    string day;          // mon, tue, wed, thu, fri, sat, sun
+    string name;
+    string startTime;
+    string endTime;      // may be empty
+};
+
+vector<ScheduleTask> allSchedule;
+int nextScheduleID = 1;
+
+
+bool isValidDay(const string& day) {
+
+    static const vector<string> validDays = {
+        "mon", "tue", "wed", "thu", "fri", "sat", "sun"
+    };
+
+    return find(
+        validDays.begin(),
+        validDays.end(),
+        day
+    ) != validDays.end();
+}
+
+
+void loadSchedule() {
+
+    allSchedule.clear();
+
+    ifstream file("schedule.txt");
+
+    if (!file.is_open()) {
+        return;
+    }
+
+    string line;
+
+    int highestID = 0;
+
+    while (getline(file, line)) {
+
+        if (line.empty()) {
+            continue;
+        }
+
+        vector<string> parts;
+
+        size_t pos = 0;
+
+        while (true) {
+
+            size_t sep = line.find('|', pos);
+
+            if (sep == string::npos) {
+
+                parts.push_back(line.substr(pos));
+                break;
+            }
+
+            parts.push_back(line.substr(pos, sep - pos));
+
+            pos = sep + 1;
+        }
+
+        // id|username|day|name|startTime|endTime
+        if (parts.size() < 6) {
+            continue;
+        }
+
+        ScheduleTask item;
+
+        item.id = atoi(parts[0].c_str());
+        item.username = parts[1];
+        item.day = parts[2];
+        item.name = parts[3];
+        item.startTime = parts[4];
+        item.endTime = parts[5];
+
+        allSchedule.push_back(item);
+
+        if (item.id > highestID) {
+            highestID = item.id;
+        }
+    }
+
+    nextScheduleID = highestID + 1;
+}
+
+
+void saveSchedule() {
+
+    ofstream file("schedule.txt", ios::trunc);
+
+    for (const ScheduleTask& item : allSchedule) {
+
+        file << item.id << "|"
+             << item.username << "|"
+             << item.day << "|"
+             << item.name << "|"
+             << item.startTime << "|"
+             << item.endTime
+             << "\n";
+    }
+}
+
+
+// ============================================================
 // URL DECODER
 // ============================================================
 
@@ -1171,6 +1288,231 @@ string getAllTasks(const string& username) {
 
 
 // ============================================================
+// ADD SCHEDULE TASK (Daily Schedule - NOT a reminder)
+// ============================================================
+
+string addScheduleTask(const string& body) {
+
+    string username =
+        getValue(body, "username");
+
+    string day =
+        toLower(getValue(body, "day"));
+
+    string name =
+        getValue(body, "name");
+
+    string startTime =
+        getValue(body, "startTime");
+
+    string endTime =
+        getValue(body, "endTime");
+
+
+    if (username.empty()) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"You must be logged in.\"}";
+    }
+
+    if (!isValidDay(day)) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"Invalid day of week.\"}";
+    }
+
+    if (name.empty() || startTime.empty()) {
+
+        return
+            "{\"success\":false,"
+            "\"message\":\"Task name and start time are required.\"}";
+    }
+
+
+    ScheduleTask item;
+
+    item.id = nextScheduleID++;
+    item.username = sanitizeField(username);
+    item.day = day;
+    item.name = sanitizeField(name);
+    item.startTime = sanitizeField(startTime);
+    item.endTime = sanitizeField(endTime);
+
+    allSchedule.push_back(item);
+
+    saveSchedule();
+
+    return
+        "{"
+        "\"success\":true,"
+        "\"id\":" + to_string(item.id)
+        + "}";
+}
+
+
+// ============================================================
+// UPDATE SCHEDULE TASK (only the owner can edit their own task)
+// ============================================================
+
+string updateScheduleTask(const string& body) {
+
+    string idText =
+        getValue(body, "id");
+
+    string username =
+        getValue(body, "username");
+
+    int id = atoi(idText.c_str());
+
+    for (ScheduleTask& item : allSchedule) {
+
+        if (item.id != id) {
+            continue;
+        }
+
+        if (toLower(item.username) != toLower(username)) {
+
+            return
+                "{\"success\":false,"
+                "\"message\":\"You do not have permission to edit this task.\"}";
+        }
+
+        string name = getValue(body, "name");
+        string startTime = getValue(body, "startTime");
+        string endTime = getValue(body, "endTime");
+        string day = toLower(getValue(body, "day"));
+
+        if (!name.empty()) {
+            item.name = sanitizeField(name);
+        }
+
+        if (!startTime.empty()) {
+            item.startTime = sanitizeField(startTime);
+        }
+
+        if (!endTime.empty()) {
+            item.endTime = sanitizeField(endTime);
+        }
+
+        if (isValidDay(day)) {
+            item.day = day;
+        }
+
+        saveSchedule();
+
+        return
+            "{\"success\":true}";
+    }
+
+    return
+        "{\"success\":false,"
+        "\"message\":\"Schedule task not found.\"}";
+}
+
+
+// ============================================================
+// DELETE SCHEDULE TASK (only the owner can delete their own task)
+// ============================================================
+
+string deleteScheduleTask(const string& request) {
+
+    string idText = getValue(request, "id");
+    string username = getValue(request, "username");
+
+    int id = atoi(idText.c_str());
+
+    for (size_t i = 0; i < allSchedule.size(); i++) {
+
+        if (allSchedule[i].id != id) {
+            continue;
+        }
+
+        if (toLower(allSchedule[i].username) != toLower(username)) {
+
+            return
+                "{\"success\":false,"
+                "\"message\":\"You do not have permission to delete this task.\"}";
+        }
+
+        allSchedule.erase(allSchedule.begin() + i);
+
+        saveSchedule();
+
+        return
+            "{\"success\":true}";
+    }
+
+    return
+        "{\"success\":false,"
+        "\"message\":\"Schedule task not found.\"}";
+}
+
+
+// ============================================================
+// GET SCHEDULE -- SCOPED TO ONE USER
+// ============================================================
+
+string getSchedule(const string& username) {
+
+    string result =
+
+        "{"
+        "\"success\":true,"
+        "\"schedule\":[";
+
+    bool first = true;
+
+    for (const ScheduleTask& item : allSchedule) {
+
+        if (
+            !username.empty() &&
+            toLower(item.username) != toLower(username)
+        ) {
+            continue;
+        }
+
+        if (!first) {
+            result += ",";
+        }
+
+        first = false;
+
+        result +=
+
+            "{"
+
+            "\"id\":"
+            + to_string(item.id)
+            + ","
+
+            "\"day\":\""
+            + jsonEscape(item.day)
+            + "\","
+
+            "\"name\":\""
+            + jsonEscape(item.name)
+            + "\","
+
+            "\"startTime\":\""
+            + jsonEscape(item.startTime)
+            + "\","
+
+            "\"endTime\":\""
+            + jsonEscape(item.endTime)
+            + "\""
+
+            + "}";
+    }
+
+    result += "]}";
+
+    return result;
+}
+
+
+// ============================================================
 // HANDLE HTTP REQUEST
 // ============================================================
 
@@ -1576,6 +1918,90 @@ if (request.find("GET / HTTP") == 0) {
     }
 
 
+    // ADD SCHEDULE TASK (Daily Schedule, separate from reminders)
+
+    if (
+        request.find("POST /schedule/add") == 0
+    ) {
+
+        string response =
+            addScheduleTask(body);
+
+        sendResponse(
+            client,
+            response
+        );
+
+        return;
+    }
+
+
+    // UPDATE SCHEDULE TASK
+
+    if (
+        request.find("POST /schedule/update") == 0
+    ) {
+
+        string response =
+            updateScheduleTask(body);
+
+        sendResponse(
+            client,
+            response
+        );
+
+        return;
+    }
+
+
+    // DELETE SCHEDULE TASK
+    // (must be checked before the generic "GET /schedule" route
+    // below, since that route would otherwise also match this
+    // path's "GET /schedule/delete" prefix)
+
+    if (
+        request.find("POST /schedule/delete") == 0 ||
+        request.find("GET /schedule/delete") == 0
+    ) {
+
+        string source =
+            request.find("POST /schedule/delete") == 0
+                ? body
+                : firstLine;
+
+        string response =
+            deleteScheduleTask(source);
+
+        sendResponse(
+            client,
+            response
+        );
+
+        return;
+    }
+
+
+    // GET SCHEDULE FOR THE LOGGED-IN USER
+
+    if (
+        request.find("GET /schedule") == 0
+    ) {
+
+        string username =
+            getValue(firstLine, "username");
+
+        string response =
+            getSchedule(username);
+
+        sendResponse(
+            client,
+            response
+        );
+
+        return;
+    }
+
+
     // UNKNOWN REQUEST
 
     sendResponse(
@@ -1593,6 +2019,7 @@ int main() {
 
     loadUsers();
     loadTasks();
+    loadSchedule();
 
     int serverSocket =
         socket(
