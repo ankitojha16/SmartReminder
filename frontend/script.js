@@ -3199,17 +3199,10 @@ async function confirmReminderFromSchedule() {
 
 
 /* =========================================================
-   AI ASSISTANT (Google Gemini) - schedule & reminders only
-
-   The key is stored only in the browser (same bring-your-own-key
-   pattern as before) and sent straight to Google. When the model
-   proposes a day plan, it's asked to end its reply with a fenced
-   ```schedule``` block of JSON; we parse that into a preview card
-   with Keep/Undo instead of ever touching the saved schedule
-   silently.
+   AI ASSISTANT
+   SmartReminder server-side Gemini
+   Users DO NOT need a Gemini API key.
    ========================================================= */
-
-const AI_CHAT_ENDPOINT = "/ai-chat";
 
 const AI_SYSTEM_PROMPT =
     "You are the built-in assistant inside a reminder and daily-schedule app called Smart Reminder. " +
@@ -3217,166 +3210,291 @@ const AI_SYSTEM_PROMPT =
     "things into reminders. Politely decline anything unrelated to scheduling, reminders, or daily " +
     "planning, and steer the conversation back to those topics. Keep replies short and practical.\n\n" +
     "Whenever the user asks you to build or change a day plan or schedule, end your reply with a " +
-    "fenced block exactly like this, with nothing else inside it:\n" +
+    "fenced block exactly like this:\n" +
     "```schedule\n" +
     "[{\"day\":\"mon\",\"name\":\"Wake up\",\"start\":\"06:00\",\"end\":\"06:15\"}]\n" +
     "```\n" +
-    "Use lowercase three-letter day codes (mon, tue, wed, thu, fri, sat, sun), 24-hour \"HH:MM\" times, " +
-    "and one object per task. Only include the day(s) the user actually asked about - don't invent " +
-    "extra days. If you are not proposing a schedule, omit the fenced block entirely.";
+    "Use lowercase three-letter day codes (mon, tue, wed, thu, fri, sat, sun), 24-hour HH:MM times, " +
+    "and one object per task. Only include the day(s) the user actually asked about. " +
+    "If you are not proposing a schedule, omit the fenced block.";
+
+
+/* =========================================================
+   OPEN / CLOSE AI CHAT
+   ========================================================= */
+
+function toggleAiChat() {
+
+    const panel = document.getElementById("aiChatPanel");
+
+    if (!panel) {
+        console.error("AI chat panel not found.");
+        return;
+    }
+
+    panel.classList.toggle("open");
+}
+
 
 function appendAiMessage(text, who) {
 
     const container =
         document.getElementById("aiChatMessages");
 
+    if (!container) {
+        console.error("AI messages container not found.");
+        return null;
+    }
+
     const bubble =
         document.createElement("p");
 
     bubble.className =
-        who === "user" ? "ai-msg ai-msg-user" : "ai-msg ai-msg-bot";
+        who === "user"
+            ? "ai-msg ai-msg-user"
+            : "ai-msg ai-msg-bot";
 
     bubble.textContent = text;
 
     container.appendChild(bubble);
 
-    container.scrollTop = container.scrollHeight;
+    container.scrollTop =
+        container.scrollHeight;
 
     return bubble;
 }
 
 
+/* =========================================================
+   PARSE AI SCHEDULE
+   ========================================================= */
+
 function extractScheduleBlock(text) {
 
-    const match = text.match(/```schedule\s*([\s\S]*?)```/i);
+    const match =
+        text.match(/```schedule\s*([\s\S]*?)```/i);
 
     if (!match) {
 
-        return { cleanText: text.trim(), items: null };
+        return {
+            cleanText: text.trim(),
+            items: null
+        };
     }
 
     const cleanText =
-        (text.slice(0, match.index) +
-         text.slice(match.index + match[0].length)).trim();
+        (
+            text.slice(0, match.index) +
+            text.slice(match.index + match[0].length)
+        ).trim();
 
     let items = null;
 
     try {
 
-        const parsed = JSON.parse(match[1].trim());
+        const parsed =
+            JSON.parse(match[1].trim());
 
         if (Array.isArray(parsed)) {
 
             items =
                 parsed
-                    .filter(item => item && item.day && item.name && item.start)
-                    .map(item => ({
-                        day: String(item.day).toLowerCase().slice(0, 3),
-                        name: String(item.name),
-                        startTime: String(item.start),
-                        endTime: item.end ? String(item.end) : ""
-                    }))
-                    .filter(item => ALL_DAYS.includes(item.day));
+                    .filter(function (item) {
+
+                        return (
+                            item &&
+                            item.day &&
+                            item.name &&
+                            item.start
+                        );
+                    })
+                    .map(function (item) {
+
+                        return {
+                            day:
+                                String(item.day)
+                                    .toLowerCase()
+                                    .slice(0, 3),
+
+                            name:
+                                String(item.name),
+
+                            startTime:
+                                String(item.start),
+
+                            endTime:
+                                item.end
+                                    ? String(item.end)
+                                    : ""
+                        };
+                    })
+                    .filter(function (item) {
+
+                        return (
+                            typeof ALL_DAYS !== "undefined" &&
+                            ALL_DAYS.includes(item.day)
+                        );
+                    });
         }
 
     }
     catch (error) {
 
-        console.error("Could not parse AI schedule block:", error);
+        console.error(
+            "Could not parse AI schedule:",
+            error
+        );
     }
 
-    return { cleanText, items };
+    return {
+        cleanText,
+        items
+    };
 }
 
+
+/* =========================================================
+   SHOW SCHEDULE PREVIEW
+   ========================================================= */
 
 function renderAiSchedulePreview(items) {
 
     const container =
         document.getElementById("aiChatMessages");
 
+    if (!container) {
+        return;
+    }
+
     const card =
         document.createElement("div");
 
-    card.className = "ai-schedule-preview";
+    card.className =
+        "ai-schedule-preview";
+
 
     const title =
         document.createElement("strong");
 
-    title.textContent = "Suggested schedule";
+    title.textContent =
+        "Suggested schedule";
 
     card.appendChild(title);
 
+
     const byDay = {};
 
-    items.forEach(item => {
+
+    items.forEach(function (item) {
 
         if (!byDay[item.day]) {
+
             byDay[item.day] = [];
         }
 
         byDay[item.day].push(item);
     });
 
-    Object.keys(byDay).forEach(day => {
+
+    Object.keys(byDay).forEach(function (day) {
 
         const dayLine =
             document.createElement("p");
 
+        const label =
+            typeof DAY_LABELS !== "undefined"
+                ? DAY_LABELS[day] || day
+                : day;
+
         dayLine.innerHTML =
-            `<strong>${DAY_LABELS[day] || day}</strong>`;
+            `<strong>${label}</strong>`;
 
         card.appendChild(dayLine);
 
-        byDay[day].forEach(item => {
+
+        byDay[day].forEach(function (item) {
 
             const line =
                 document.createElement("p");
 
-            line.className = "ai-schedule-preview-row";
+            line.className =
+                "ai-schedule-preview-row";
 
             line.textContent =
                 `${item.startTime}` +
-                (item.endTime ? `–${item.endTime}` : "") +
+                (
+                    item.endTime
+                        ? `–${item.endTime}`
+                        : ""
+                ) +
                 ` · ${item.name}`;
 
             card.appendChild(line);
         });
     });
 
+
     const actions =
         document.createElement("div");
 
-    actions.className = "ai-schedule-preview-actions";
+    actions.className =
+        "ai-schedule-preview-actions";
+
 
     const keepButton =
         document.createElement("button");
 
-    keepButton.className = "save";
-    keepButton.textContent = "Keep";
+    keepButton.className =
+        "save";
+
+    keepButton.textContent =
+        "Keep";
+
 
     const undoButton =
         document.createElement("button");
 
-    undoButton.textContent = "Undo";
+    undoButton.textContent =
+        "Undo";
 
-    keepButton.onclick = async function () {
 
-        keepButton.disabled = true;
-        undoButton.disabled = true;
+    keepButton.onclick =
+        async function () {
 
-        await applyAiSchedule(items);
+            keepButton.disabled = true;
+            undoButton.disabled = true;
 
-        card.remove();
+            const success =
+                await applyAiSchedule(items);
 
-        appendAiMessage("Done — your schedule has been updated.", "bot");
-    };
+            if (success) {
 
-    undoButton.onclick = function () {
+                card.remove();
 
-        card.remove();
+                appendAiMessage(
+                    "Done — your schedule has been updated.",
+                    "bot"
+                );
+            }
+            else {
 
-        appendAiMessage("No problem — I left your schedule as it was.", "bot");
-    };
+                keepButton.disabled = false;
+                undoButton.disabled = false;
+            }
+        };
+
+
+    undoButton.onclick =
+        function () {
+
+            card.remove();
+
+            appendAiMessage(
+                "No problem — I left your schedule as it was.",
+                "bot"
+            );
+        };
+
 
     actions.appendChild(keepButton);
     actions.appendChild(undoButton);
@@ -3385,192 +3503,475 @@ function renderAiSchedulePreview(items) {
 
     container.appendChild(card);
 
-    container.scrollTop = container.scrollHeight;
+    container.scrollTop =
+        container.scrollHeight;
 }
 
+
+/* =========================================================
+   SAVE AI SCHEDULE
+   ========================================================= */
 
 async function applyAiSchedule(items) {
 
-    const username = getLoggedInUser() || "";
-
-    await loadScheduleData();
-
-    const affectedDays =
-        [...new Set(items.map(item => item.day))];
+    const username =
+        typeof getLoggedInUser === "function"
+            ? getLoggedInUser() || ""
+            : "";
 
     try {
 
-        for (const day of affectedDays) {
+        if (typeof loadScheduleData === "function") {
 
-            const existingIds =
-                scheduleData
-                    .filter(task => task.day === day)
-                    .map(task => task.id);
+            await loadScheduleData();
+        }
 
-            for (const id of existingIds) {
 
-                await fetch(`${API}/schedule/delete`, {
+        const affectedDays =
+            [
+                ...new Set(
+                    items.map(function (item) {
+                        return item.day;
+                    })
+                )
+            ];
 
-                    method: "POST",
 
-                    headers: {
-                        "Content-Type":
-                            "application/x-www-form-urlencoded"
-                    },
+        /*
+         * Delete existing schedule entries
+         * for the days AI changed.
+         */
 
-                    body:
-                        new URLSearchParams({
-                            id: String(id),
-                            username: username
+        if (typeof scheduleData !== "undefined") {
+
+            for (const day of affectedDays) {
+
+                const existingIds =
+                    scheduleData
+                        .filter(function (task) {
+
+                            return task.day === day;
                         })
-                });
+                        .map(function (task) {
+
+                            return task.id;
+                        });
+
+
+                for (const id of existingIds) {
+
+                    await fetch(
+                        `${API}/schedule/delete`,
+                        {
+                            method: "POST",
+
+                            headers: {
+                                "Content-Type":
+                                    "application/x-www-form-urlencoded"
+                            },
+
+                            body:
+                                new URLSearchParams({
+                                    id: String(id),
+                                    username: username
+                                })
+                        }
+                    );
+                }
             }
         }
 
+
+        /*
+         * Add the new AI-generated schedule.
+         */
+
         for (const item of items) {
 
-            await fetch(`${API}/schedule/add`, {
+            const response =
+                await fetch(
+                    `${API}/schedule/add`,
+                    {
+                        method: "POST",
 
-                method: "POST",
+                        headers: {
+                            "Content-Type":
+                                "application/x-www-form-urlencoded"
+                        },
 
-                headers: {
-                    "Content-Type":
-                        "application/x-www-form-urlencoded"
-                },
+                        body:
+                            new URLSearchParams({
 
-                body:
-                    new URLSearchParams({
-                        username: username,
-                        day: item.day,
-                        name: item.name,
-                        startTime: item.startTime,
-                        endTime: item.endTime || ""
-                    })
-            });
+                                username:
+                                    username,
+
+                                day:
+                                    item.day,
+
+                                name:
+                                    item.name,
+
+                                startTime:
+                                    item.startTime,
+
+                                endTime:
+                                    item.endTime || ""
+                            })
+                    }
+                );
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    "Could not save schedule item."
+                );
+            }
         }
 
-        await loadScheduleData();
+
+        if (
+            typeof loadScheduleData === "function"
+        ) {
+
+            await loadScheduleData();
+        }
+
 
         const weekModal =
-            document.getElementById("scheduleWeekModal");
+            document.getElementById(
+                "scheduleWeekModal"
+            );
 
-        if (weekModal && weekModal.style.display === "flex") {
 
-            renderScheduleDay(activeScheduleDay);
+        if (
+            weekModal &&
+            weekModal.style.display === "flex" &&
+            typeof renderScheduleDay === "function"
+        ) {
+
+            renderScheduleDay(
+                typeof activeScheduleDay !== "undefined"
+                    ? activeScheduleDay
+                    : affectedDays[0]
+            );
         }
 
+
+        return true;
     }
+
     catch (error) {
 
-        console.error("Apply AI schedule error:", error);
+        console.error(
+            "Apply AI schedule error:",
+            error
+        );
 
-        appendAiMessage("I couldn't save that schedule — please try again.", "bot");
+        appendAiMessage(
+            "I couldn't save that schedule — please try again.",
+            "bot"
+        );
+
+        return false;
     }
 }
 
+
+/* =========================================================
+   SEND MESSAGE TO OUR BACKEND
+   ========================================================= */
 
 async function sendAiChatMessage() {
 
     const input =
         document.getElementById("aiChatInput");
 
-    const text = input.value.trim();
+    if (!input) {
+
+        console.error(
+            "AI input not found."
+        );
+
+        return;
+    }
+
+
+    const text =
+        input.value.trim();
+
 
     if (!text) {
         return;
     }
 
-    appendAiMessage(text, "user");
+
+    appendAiMessage(
+        text,
+        "user"
+    );
+
 
     input.value = "";
 
+
     const thinkingBubble =
-        appendAiMessage("Thinking...", "bot");
+        appendAiMessage(
+            "Thinking...",
+            "bot"
+        );
+
 
     try {
 
+        /*
+         * IMPORTANT:
+         *
+         * We DO NOT send a Gemini API key
+         * from the browser.
+         *
+         * The backend reads:
+         *
+         * GEMINI_API_KEY
+         *
+         * from Render environment variables.
+         */
+
         const response =
-            await fetch(AI_CHAT_ENDPOINT, {
+            await fetch(
+                `${API}/ai-chat`,
+                {
+                    method: "POST",
 
-                method: "POST",
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
 
-                headers: {
-                    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
-                },
+                    body:
+                        JSON.stringify({
+                            message: text
+                        })
+                }
+            );
 
-                body: "message=" + encodeURIComponent(text)
-            });
 
-        const data = await response.json();
+        let data;
 
-        thinkingBubble.remove();
+        try {
 
-        if (data.error) {
+            data =
+                await response.json();
+
+        }
+        catch (jsonError) {
+
+            throw new Error(
+                "The server returned an invalid response."
+            );
+        }
+
+
+        if (thinkingBubble) {
+
+            thinkingBubble.remove();
+        }
+
+
+        if (!response.ok) {
 
             appendAiMessage(
-                `AI error: ${data.error.message}`,
+                data.message ||
+                "AI service returned an error.",
                 "bot"
             );
 
             return;
         }
 
-        const reply =
+
+        if (data.success === false) {
+
+            appendAiMessage(
+                data.message ||
+                "The AI service is not available.",
+                "bot"
+            );
+
+            return;
+        }
+
+
+        /*
+         * The backend may return Gemini's
+         * normal response directly.
+         */
+
+        let reply = "";
+
+
+        if (
             data.candidates &&
             data.candidates[0] &&
             data.candidates[0].content &&
-            data.candidates[0].content.parts &&
             data.candidates[0].content.parts
-                .map(part => part.text || "")
-                .join("");
+        ) {
+
+            reply =
+                data.candidates[0]
+                    .content
+                    .parts
+                    .map(function (part) {
+
+                        return part.text || "";
+                    })
+                    .join("");
+        }
+
+
+        /*
+         * Also support a backend response
+         * containing {reply:"..."}.
+         */
+
+        if (
+            !reply &&
+            typeof data.reply === "string"
+        ) {
+
+            reply =
+                data.reply;
+        }
+
+
+        /*
+         * Support a backend response
+         * containing {message:"..."}.
+         */
+
+        if (
+            !reply &&
+            typeof data.message === "string"
+        ) {
+
+            reply =
+                data.message;
+        }
+
 
         if (!reply) {
 
             appendAiMessage(
-                "Sorry, I didn't get a response.",
+                "Sorry, I didn't get a response from the AI.",
                 "bot"
             );
 
             return;
         }
 
-        const { cleanText, items } = extractScheduleBlock(reply);
 
-        if (cleanText) {
-            appendAiMessage(cleanText, "bot");
+        const result =
+            extractScheduleBlock(reply);
+
+
+        if (result.cleanText) {
+
+            appendAiMessage(
+                result.cleanText,
+                "bot"
+            );
         }
 
-        if (items && items.length > 0) {
-            renderAiSchedulePreview(items);
+
+        if (
+            result.items &&
+            result.items.length > 0
+        ) {
+
+            renderAiSchedulePreview(
+                result.items
+            );
         }
 
     }
+
     catch (error) {
 
-        console.error("AI chat error:", error);
+        console.error(
+            "AI chat error:",
+            error
+        );
 
-        thinkingBubble.remove();
+
+        if (thinkingBubble) {
+
+            thinkingBubble.remove();
+        }
+
 
         appendAiMessage(
-            "Could not reach the AI service.",
+            "Could not reach the AI service. Please try again.",
             "bot"
         );
     }
 }
 
 
-document.addEventListener("DOMContentLoaded", function () {
+/* =========================================================
+   AI INPUT ENTER KEY
+   ========================================================= */
 
-    const aiInput =
-        document.getElementById("aiChatInput");
+document.addEventListener(
+    "DOMContentLoaded",
+    function () {
 
-    if (aiInput) {
+        const aiInput =
+            document.getElementById(
+                "aiChatInput"
+            );
 
-        aiInput.addEventListener("keydown", function (event) {
 
-            if (event.key === "Enter") {
-                sendAiChatMessage();
-            }
-        });
+        if (aiInput) {
+
+            aiInput.addEventListener(
+                "keydown",
+                function (event) {
+
+                    if (
+                        event.key === "Enter" &&
+                        !event.shiftKey
+                    ) {
+
+                        event.preventDefault();
+
+                        sendAiChatMessage();
+                    }
+                }
+            );
+        }
+
+
+        /*
+         * Extra safety:
+         * Make sure the AI button works even
+         * if inline onclick handling is changed.
+         */
+
+        const aiFab =
+            document.getElementById(
+                "aiFab"
+            );
+
+
+        if (aiFab) {
+
+            aiFab.addEventListener(
+                "click",
+                function () {
+
+                    toggleAiChat();
+                }
+            );
+        }
     }
-});
+);
