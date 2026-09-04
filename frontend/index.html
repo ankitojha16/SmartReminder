@@ -11,6 +11,8 @@
     <title>Smart Reminder</title>
 
     <link rel="stylesheet" href="style.css">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="description" content="Smart Reminder - never miss what matters.">
 
 </head>
 
@@ -296,13 +298,14 @@
                     <p id="headerSubtitle">
                         Here are your important reminders.
                     </p>
+                    <p id="notificationStatus" class="notification-status" aria-live="polite"></p>
 
                 </div>
 
 
                 <div class="header-actions">
 
-                    <button class="notification" onclick="showNotifications()" title="Notifications">
+                    <button id="notificationButton" class="notification" onclick="showNotifications()" title="Enable device notifications">
                         🔔
                     </button>
 

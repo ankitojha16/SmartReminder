@@ -49,6 +49,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         await loadTasks();
 
+        await initializeDeviceNotifications();
+
         showDashboard();
 
     }
@@ -390,52 +392,412 @@ function showCompleted() {
 
 function showNotifications() {
 
+    if (!("Notification" in window)) {
+        alert(
+            "Your browser does not support device notifications."
+        );
+        return;
+    }
+
+    if (Notification.permission !== "granted") {
+        requestDeviceNotifications();
+        return;
+    }
+
     const pending =
         tasks.filter(task => !task.completed);
 
-
     if (pending.length === 0) {
-
         alert("🔔 No pending reminders.");
+        return;
+    }
+
+    const upcoming = [...pending]
+        .filter(task => parseTaskDateTime(task))
+        .sort((a, b) => {
+            return parseTaskDateTime(a).getTime()
+                - parseTaskDateTime(b).getTime();
+        })
+        .slice(0, 5);
+
+    let message = "🔔 Notifications are ON.\n\n";
+
+    if (upcoming.length === 0) {
+        message += "No scheduled reminders.";
+    }
+    else {
+        message += "Upcoming reminders:\n\n";
+
+        upcoming.forEach((task, index) => {
+            message +=
+                `${index + 1}. ${task.name}\n` +
+                `${task.date} • ${task.time}\n\n`;
+        });
+    }
+
+    alert(message);
+}
+
+
+
+// ==========================================
+// DEVICE NOTIFICATIONS
+// ==========================================
+//
+// This uses the browser Notifications API plus a Service Worker.
+// The page checks reminders periodically while SmartReminder is
+// open/in the background. A Service Worker handles the notification
+// display and click action.
+//
+// Important: a normal browser page cannot reliably wake a completely
+// closed website by itself. True "closed browser" push requires a
+// push provider/VAPID setup. This implementation therefore gives
+// reliable device notifications while the site is running, and on
+// browsers that keep the page/service worker alive in the background.
+
+const NOTIFICATION_SEEN_KEY = "smartReminderNotificationSeen";
+const NOTIFICATION_POLL_MS = 15000;
+let notificationPollTimer = null;
+let serviceWorkerRegistration = null;
+
+async function registerNotificationServiceWorker() {
+    if (!("serviceWorker" in navigator)) {
+        updateNotificationStatus();
+        return null;
+    }
+
+    try {
+        serviceWorkerRegistration =
+            await navigator.serviceWorker.register("/service-worker.js");
+
+        await navigator.serviceWorker.ready;
+
+        return serviceWorkerRegistration;
+    }
+    catch (error) {
+        console.error("Service worker registration failed:", error);
+        return null;
+    }
+}
+
+function getNotificationSeen() {
+    try {
+        const raw = localStorage.getItem(NOTIFICATION_SEEN_KEY);
+        const data = raw ? JSON.parse(raw) : {};
+
+        if (!data || typeof data !== "object") {
+            return {};
+        }
+
+        return data;
+    }
+    catch (error) {
+        return {};
+    }
+}
+
+function saveNotificationSeen(data) {
+    try {
+        localStorage.setItem(
+            NOTIFICATION_SEEN_KEY,
+            JSON.stringify(data)
+        );
+    }
+    catch (error) {
+        console.warn("Could not save notification state:", error);
+    }
+}
+
+function taskNotificationKey(task) {
+    return [
+        getLoggedInUser() || "",
+        String(task.id),
+        task.date || "",
+        task.time || ""
+    ].join("|");
+}
+
+function parseTaskDateTime(task) {
+    if (!task || !task.date || !task.time) {
+        return null;
+    }
+
+    const date = new Date(`${task.date}T${task.time}`);
+
+    if (Number.isNaN(date.getTime())) {
+        return null;
+    }
+
+    return date;
+}
+
+function updateNotificationStatus() {
+    const status = document.getElementById("notificationStatus");
+    const button = document.getElementById("notificationButton");
+
+    if (!status) {
+        return;
+    }
+
+    status.classList.remove("enabled", "disabled", "blocked");
+
+    if (!("Notification" in window)) {
+        status.textContent = "Device notifications are not supported by this browser.";
+        status.classList.add("blocked");
+
+        if (button) {
+            button.title = "Notifications are not supported";
+        }
 
         return;
     }
 
+    if (Notification.permission === "granted") {
+        status.textContent = "🔔 Device notifications are ON";
+        status.classList.add("enabled");
 
-    const importantTask =
-        [...pending].sort((a, b) => {
+        if (button) {
+            button.classList.add("notification-enabled");
+            button.title = "Notifications are enabled";
+        }
 
-            if (b.priority !== a.priority) {
-                return b.priority - a.priority;
-            }
+        return;
+    }
 
-            return (
-                `${a.date} ${a.time}`
-            ).localeCompare(
-                `${b.date} ${b.time}`
+    if (Notification.permission === "denied") {
+        status.textContent = "🔕 Notifications are blocked. Allow them in browser settings.";
+        status.classList.add("blocked");
+
+        if (button) {
+            button.classList.remove("notification-enabled");
+            button.title = "Notifications are blocked";
+        }
+
+        return;
+    }
+
+    status.textContent = "🔔 Click the bell to enable device notifications.";
+    status.classList.add("disabled");
+
+    if (button) {
+        button.classList.remove("notification-enabled");
+        button.title = "Enable device notifications";
+    }
+}
+
+async function requestDeviceNotifications() {
+    if (!("Notification" in window)) {
+        alert("This browser does not support device notifications.");
+        updateNotificationStatus();
+        return false;
+    }
+
+    if (Notification.permission === "denied") {
+        alert(
+            "Notifications are blocked for Smart Reminder.\n\n" +
+            "Open your browser/site settings and allow Notifications, " +
+            "then reload the site."
+        );
+
+        updateNotificationStatus();
+        return false;
+    }
+
+    let permission = Notification.permission;
+
+    if (permission === "default") {
+        permission = await Notification.requestPermission();
+    }
+
+    updateNotificationStatus();
+
+    if (permission !== "granted") {
+        return false;
+    }
+
+    await registerNotificationServiceWorker();
+
+    // A small test notification confirms that permission really works.
+    await showDeviceNotification(
+        "Smart Reminder",
+        "Device notifications are enabled. You won't miss your reminders.",
+        "smart-reminder-test"
+    );
+
+    return true;
+}
+
+async function showDeviceNotification(title, body, tag) {
+    if (!("Notification" in window) ||
+        Notification.permission !== "granted") {
+        return false;
+    }
+
+    const options = {
+        body: body,
+        tag: tag || "smart-reminder",
+        requireInteraction: false,
+        data: {
+            url: window.location.origin + "/"
+        }
+    };
+
+    try {
+        if (serviceWorkerRegistration) {
+            await serviceWorkerRegistration.showNotification(
+                title,
+                options
             );
 
-        })[0];
+            return true;
+        }
 
+        const registration =
+            await registerNotificationServiceWorker();
 
-    alert(
-        "🔔 Reminder Notification\n\n" +
+        if (registration) {
+            await registration.showNotification(
+                title,
+                options
+            );
 
-        importantTask.name +
+            return true;
+        }
 
-        "\n" +
+        // Fallback for browsers where the service worker is unavailable.
+        new Notification(title, options);
+        return true;
+    }
+    catch (error) {
+        console.error("Could not show notification:", error);
 
-        importantTask.date +
-        " • " +
-        importantTask.time +
+        try {
+            new Notification(title, options);
+            return true;
+        }
+        catch (fallbackError) {
+            console.error(
+                "Notification fallback failed:",
+                fallbackError
+            );
+            return false;
+        }
+    }
+}
 
-        "\nPriority: " +
+async function checkDueReminders() {
+    const username = getLoggedInUser();
 
-        getPriorityName(
-            importantTask.priority
-        )
+    if (!username || !Array.isArray(tasks)) {
+        return;
+    }
+
+    if (!("Notification" in window) ||
+        Notification.permission !== "granted") {
+        return;
+    }
+
+    const now = Date.now();
+    const seen = getNotificationSeen();
+    let changed = false;
+
+    // Only notify for reminders that became due within the last
+    // 2 minutes. This prevents old reminders from firing immediately
+    // when a user logs in days later.
+    const gracePeriodMs = 2 * 60 * 1000;
+
+    for (const task of tasks) {
+        if (!task || task.completed) {
+            continue;
+        }
+
+        const due = parseTaskDateTime(task);
+
+        if (!due) {
+            continue;
+        }
+
+        const dueTime = due.getTime();
+
+        if (dueTime > now) {
+            continue;
+        }
+
+        if (now - dueTime > gracePeriodMs) {
+            continue;
+        }
+
+        const key = taskNotificationKey(task);
+
+        if (seen[key]) {
+            continue;
+        }
+
+        const priorityName =
+            typeof getPriorityName === "function"
+                ? getPriorityName(task.priority)
+                : "Reminder";
+
+        const shown = await showDeviceNotification(
+            "⏰ Smart Reminder",
+            `${task.name}\n${task.date} • ${task.time}\nPriority: ${priorityName}`,
+            `smart-reminder-${task.id}-${task.date}-${task.time}`
+        );
+
+        if (shown) {
+            seen[key] = Date.now();
+            changed = true;
+        }
+    }
+
+    // Keep this small so localStorage does not grow forever.
+    const cutoff = now - (30 * 24 * 60 * 60 * 1000);
+
+    for (const key of Object.keys(seen)) {
+        if (typeof seen[key] === "number" && seen[key] < cutoff) {
+            delete seen[key];
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        saveNotificationSeen(seen);
+    }
+}
+
+function startNotificationChecker() {
+    if (notificationPollTimer) {
+        clearInterval(notificationPollTimer);
+    }
+
+    checkDueReminders();
+
+    notificationPollTimer = setInterval(
+        async function () {
+            if (getLoggedInUser()) {
+                await checkDueReminders();
+            }
+        },
+        NOTIFICATION_POLL_MS
     );
 }
+
+function stopNotificationChecker() {
+    if (notificationPollTimer) {
+        clearInterval(notificationPollTimer);
+        notificationPollTimer = null;
+    }
+}
+
+async function initializeDeviceNotifications() {
+    updateNotificationStatus();
+
+    // Registering a service worker does NOT ask for permission.
+    await registerNotificationServiceWorker();
+
+    startNotificationChecker();
+}
+
 
 
 // ==========================================
@@ -1218,6 +1580,7 @@ function toggleTheme() {
 /* Apply saved theme when page opens */
 document.addEventListener("DOMContentLoaded", function () {
     applyTheme();
+    updateNotificationStatus();
 });
 
 
@@ -1490,6 +1853,8 @@ async function loginUser() {
 
         await loadTasks();
 
+        await initializeDeviceNotifications();
+
         showDashboard();
 
     }
@@ -1603,6 +1968,8 @@ async function signupUser() {
 
         await loadTasks();
 
+        await initializeDeviceNotifications();
+
         showDashboard();
 
     }
@@ -1621,6 +1988,8 @@ async function signupUser() {
    ========================================================= */
 
 function logoutUser() {
+
+    stopNotificationChecker();
 
     localStorage.removeItem(AUTH_KEY);
 

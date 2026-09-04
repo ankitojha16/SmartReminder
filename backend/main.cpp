@@ -1697,6 +1697,39 @@ if (request.find("GET /script.js") == 0) {
     return;
 }
 
+
+if (request.find("GET /service-worker.js") == 0) {
+
+    ifstream file("frontend/service-worker.js");
+
+    if (!file.is_open()) {
+        sendResponse(
+            client,
+            "{\"success\":false,\"message\":\"service-worker.js not found\"}"
+        );
+        return;
+    }
+
+    string content(
+        (istreambuf_iterator<char>(file)),
+        istreambuf_iterator<char>()
+    );
+
+    string response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/javascript\r\n"
+        "Cache-Control: no-cache\r\n"
+        "Service-Worker-Allowed: /\r\n"
+        "Content-Length: " + to_string(content.size()) + "\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Connection: close\r\n"
+        "\r\n" +
+        content;
+
+    send(client, response.c_str(), response.size(), 0);
+    return;
+}
+
 if (request.find("GET / HTTP") == 0) {
 
     ifstream file("frontend/index.html");
