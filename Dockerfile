@@ -3,8 +3,12 @@ FROM gcc:latest
 WORKDIR /app
 
 RUN apt-get update && \
-    apt-get install -y libpq-dev curl && \
+    apt-get install -y libpq-dev curl nodejs npm && \
     rm -rf /var/lib/apt/lists/*
+
+COPY package.json package-lock.json ./
+
+RUN npm ci --omit=dev
 
 COPY . .
 

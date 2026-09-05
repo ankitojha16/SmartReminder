@@ -17,3 +17,6 @@ tasks.txt
 
 # Local compiled backend
 backend/server
+
+# Node dependencies
+node_modules/
