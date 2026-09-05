@@ -315,6 +315,99 @@ bool executeParamsCommand(
     return ok;
 }
 // ============================================================
+// SEND WEB PUSH TO ALL DEVICES OF A USER
+// ============================================================
+string jsonEscape(string value);
+string shellEscape(const string& value);
+bool sendPushToUser(
+    const string& username,
+    const string& title,
+    const string& message
+) {
+    if (!database) {
+        return false;
+    }
+
+    const char* values[1] = {
+        username.c_str()
+    };
+
+    PGresult* result = PQexecParams(
+        database,
+        "SELECT endpoint, p256dh, auth "
+        "FROM push_subscriptions "
+        "WHERE username = $1",
+        1,
+        nullptr,
+        values,
+        nullptr,
+        nullptr,
+        0
+    );
+
+    if (PQresultStatus(result) != PGRES_TUPLES_OK) {
+        cerr << "Could not load push subscriptions: "
+             << PQerrorMessage(database)
+             << endl;
+
+        PQclear(result);
+        return false;
+    }
+
+    bool sentAny = false;
+
+    for (int i = 0; i < PQntuples(result); i++) {
+
+        string endpoint =
+            PQgetvalue(result, i, 0);
+
+        string p256dh =
+            PQgetvalue(result, i, 1);
+
+        string auth =
+            PQgetvalue(result, i, 2);
+
+        string subscription =
+            "{\"endpoint\":\"" +
+            jsonEscape(endpoint) +
+            "\",\"keys\":{\"p256dh\":\"" +
+            jsonEscape(p256dh) +
+            "\",\"auth\":\"" +
+            jsonEscape(auth) +
+            "\"}}";
+
+        string payload =
+            "{\"title\":\"" +
+            jsonEscape(title) +
+            "\",\"body\":\"" +
+            jsonEscape(message) +
+            "\"}";
+
+        string command =
+            "node push.js " +
+            shellEscape(subscription) +
+            " " +
+            shellEscape(payload);
+
+        cout << "Sending push notification to device "
+             << (i + 1)
+             << " for user "
+             << username
+             << endl;
+
+        int exitCode =
+            system(command.c_str());
+
+        if (exitCode == 0) {
+            sentAny = true;
+        }
+    }
+
+    PQclear(result);
+
+    return sentAny;
+}
+// ============================================================
 // WEB PUSH SUBSCRIPTIONS
 // ============================================================
 
@@ -1954,6 +2047,40 @@ if (
 
     string response =
         savePushSubscription(body);
+
+    sendResponse(
+        client,
+        response
+    );
+
+    return;
+}
+// TEST WEB PUSH
+if (
+    request.find("GET /push/test") == 0
+)
+{
+    string username = getValue(request, "username");
+
+    if (username.empty())
+    {
+        sendResponse(
+            client,
+            "Username is missing"
+        );
+        return;
+    }
+
+    bool sent = sendPushToUser(
+        username,
+        "Smart Reminder Test",
+        "Web Push is working on this device!"
+    );
+
+    string response =
+        sent
+        ? "Push sent"
+        : "Push failed";
 
     sendResponse(
         client,
