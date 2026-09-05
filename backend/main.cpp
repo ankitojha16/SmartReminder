@@ -21,6 +21,7 @@
 #include <libpq-fe.h>
 
 using namespace std;
+string getValue(const string& body, const string& key);
 
 
 // ============================================================
@@ -312,6 +313,57 @@ bool executeParamsCommand(
 
     PQclear(result);
     return ok;
+}
+// ============================================================
+// WEB PUSH SUBSCRIPTIONS
+// ============================================================
+
+string savePushSubscription(const string& body) {
+
+    string username = getValue(body, "username");
+    string endpoint = getValue(body, "endpoint");
+    string p256dh = getValue(body, "p256dh");
+    string auth = getValue(body, "auth");
+
+    if (
+        username.empty() ||
+        endpoint.empty() ||
+        p256dh.empty() ||
+        auth.empty()
+    ) {
+        return
+            "{\"success\":false,\"message\":\"Push subscription data is incomplete.\"}";
+    }
+
+    string sql =
+        "INSERT INTO push_subscriptions "
+        "(username, endpoint, p256dh, auth) "
+        "VALUES ($1, $2, $3, $4) "
+        "ON CONFLICT (endpoint) DO UPDATE SET "
+        "username = EXCLUDED.username, "
+        "p256dh = EXCLUDED.p256dh, "
+        "auth = EXCLUDED.auth";
+
+    bool ok = executeParamsCommand(
+        sql,
+        {
+            username,
+            endpoint,
+            p256dh,
+            auth
+        }
+    );
+
+    if (!ok) {
+        return
+            "{\"success\":false,\"message\":\"Could not save push subscription.\"}";
+    }
+
+    cout << "Push subscription saved for user: "
+         << username << endl;
+
+    return
+        "{\"success\":true,\"message\":\"Push subscription saved.\"}";
 }
 
 string dbValue(PGresult* result, int row, int column) {
@@ -1894,7 +1946,22 @@ if (request.find("GET / HTTP") == 0) {
     send(client, response.c_str(), response.size(), 0);
     return;
 }
+// SAVE WEB PUSH SUBSCRIPTION
 
+if (
+    request.find("POST /push/subscribe") == 0
+) {
+
+    string response =
+        savePushSubscription(body);
+
+    sendResponse(
+        client,
+        response
+    );
+
+    return;
+}
 
     // SIGNUP
 
