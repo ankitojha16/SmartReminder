@@ -1,0 +1,22 @@
+{
+  "name": "smartreminder",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ankitojha16/SmartReminder.git"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/ankitojha16/SmartReminder/issues"
+  },
+  "homepage": "https://github.com/ankitojha16/SmartReminder#readme",
+  "dependencies": {
+    "web-push": "^3.6.7"
+  }
+}
