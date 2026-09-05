@@ -7,6 +7,142 @@ let currentView = "dashboard";
 
  const API = "https://smartreminder-zllc.onrender.com";
 
+ // ============================================================
+// WEB PUSH - MULTI DEVICE SUBSCRIPTION
+// ============================================================
+
+const VAPID_PUBLIC_KEY =
+    "BLTO-IymxVT8Q9I7-Xr9Dq9BT2QZs82P5Iza787_EkHCI-ykqITHuJ2-nxWT1_LoHHG-un-nwU72TbXdV1R2BUg";
+
+function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat(
+        (4 - (base64String.length % 4)) % 4
+    );
+
+    const base64 = (
+        base64String +
+        padding
+    )
+        .replace(/-/g, "+")
+        .replace(/_/g, "/");
+
+    const rawData = window.atob(base64);
+
+    return Uint8Array.from(
+        [...rawData].map(char => char.charCodeAt(0))
+    );
+}
+
+async function registerWebPushSubscription() {
+
+    const username = getLoggedInUser();
+
+    if (!username) {
+        console.log(
+            "Web Push: no logged-in user."
+        );
+        return false;
+    }
+
+    if (
+        !("serviceWorker" in navigator) ||
+        !("PushManager" in window)
+    ) {
+        console.log(
+            "Web Push is not supported on this device."
+        );
+        return false;
+    }
+
+    if (
+        !("Notification" in window) ||
+        Notification.permission !== "granted"
+    ) {
+        console.log(
+            "Web Push: notification permission not granted."
+        );
+        return false;
+    }
+
+    try {
+
+        const registration =
+            serviceWorkerRegistration ||
+            await registerNotificationServiceWorker();
+
+        if (!registration) {
+            console.error(
+                "Web Push: service worker unavailable."
+            );
+            return false;
+        }
+
+        let subscription =
+            await registration.pushManager.getSubscription();
+
+        if (!subscription) {
+
+            subscription =
+                await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey:
+                        urlBase64ToUint8Array(
+                            VAPID_PUBLIC_KEY
+                        )
+                });
+        }
+
+        const subscriptionJSON =
+            subscription.toJSON();
+
+        const response = await fetch(
+            `${API}/push/subscribe`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+                body: new URLSearchParams({
+                    username: username,
+                    endpoint:
+                        subscriptionJSON.endpoint || "",
+                    p256dh:
+                        subscriptionJSON.keys?.p256dh || "",
+                    auth:
+                        subscriptionJSON.keys?.auth || ""
+                })
+            }
+        );
+
+        const result =
+            await response.json();
+
+        if (!response.ok || !result.success) {
+            console.error(
+                "Web Push subscription failed:",
+                result
+            );
+            return false;
+        }
+
+        console.log(
+            "Web Push subscription registered for:",
+            username
+        );
+
+        return true;
+
+    } catch (error) {
+
+        console.error(
+            "Web Push registration error:",
+            error
+        );
+
+        return false;
+    }
+}
 const AUTH_KEY = "smartReminderUser";
 
 // Set to true right before a fresh signup so the header can say
@@ -617,6 +753,7 @@ async function requestDeviceNotifications() {
 
     await registerNotificationServiceWorker();
 
+    await registerWebPushSubscription();
     // A small test notification confirms that permission really works.
     await showDeviceNotification(
         "Smart Reminder",
