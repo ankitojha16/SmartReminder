@@ -1,8 +1,7 @@
-// Smart Reminder Service Worker
-//
-// This worker displays notifications requested by the Smart Reminder
-// page and brings the site back to the foreground when a notification
-// is clicked.
+// ============================================================
+// SMART REMINDER - SERVICE WORKER
+// Handles notification clicks and notification action buttons.
+// ============================================================
 
 self.addEventListener("install", function () {
     self.skipWaiting();
@@ -12,26 +11,65 @@ self.addEventListener("activate", function (event) {
     event.waitUntil(self.clients.claim());
 });
 
+
+// ============================================================
+// NOTIFICATION CLICK / ACTIONS
+// ============================================================
+
 self.addEventListener("notificationclick", function (event) {
-    event.notification.close();
+
+    const notification = event.notification;
+    const action = event.action || "open";
+
+    const data = notification.data || {};
+    const taskId = data.taskId || null;
+
+    notification.close();
 
     event.waitUntil(
-        clients.matchAll({
+
+        self.clients.matchAll({
             type: "window",
             includeUncontrolled: true
-        }).then(function (clientList) {
+        })
 
+        .then(function (clientList) {
+
+            // Send the action to an already-open Smart Reminder tab
             for (const client of clientList) {
-                if ("focus" in client) {
-                    return client.focus();
+
+                if (
+                    client.url.includes("smartreminder") ||
+                    client.url.includes("onrender.com")
+                ) {
+
+                    client.postMessage({
+                        type: "REMINDER_ACTION",
+                        action: action,
+                        taskId: taskId
+                    });
+
+                    if ("focus" in client) {
+                        return client.focus();
+                    }
                 }
             }
 
-            if (clients.openWindow) {
-                return clients.openWindow("/");
+            // If the website isn't open, open it
+            if (self.clients.openWindow) {
+                return self.clients.openWindow("/");
             }
 
             return undefined;
         })
     );
+});
+
+
+// ============================================================
+// NOTIFICATION CLOSE
+// ============================================================
+
+self.addEventListener("notificationclose", function (event) {
+    // Notification was dismissed.
 });

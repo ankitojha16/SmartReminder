@@ -627,20 +627,33 @@ async function requestDeviceNotifications() {
     return true;
 }
 
-async function showDeviceNotification(title, body, tag) {
+async function showDeviceNotification(title, body, tag, taskId) {
     if (!("Notification" in window) ||
         Notification.permission !== "granted") {
         return false;
     }
 
-    const options = {
-        body: body,
-        tag: tag || "smart-reminder",
-        requireInteraction: false,
-        data: {
-            url: window.location.origin + "/"
+   const options = {
+    body: body,
+    tag: tag || "smart-reminder",
+    requireInteraction: true,
+
+    actions: [
+        {
+            action: "complete",
+            title: "✓ Complete"
+        },
+        {
+            action: "snooze",
+            title: "😴 Snooze 15 min"
         }
-    };
+    ],
+
+    data: {
+        url: window.location.origin + "/",
+        taskId: taskId || null
+    }
+};
 
     try {
         if (serviceWorkerRegistration) {
@@ -739,10 +752,11 @@ async function checkDueReminders() {
                 : "Reminder";
 
         const shown = await showDeviceNotification(
-            "⏰ Smart Reminder",
-            `${task.name}\n${task.date} • ${task.time}\nPriority: ${priorityName}`,
-            `smart-reminder-${task.id}-${task.date}-${task.time}`
-        );
+    "⏰ Smart Reminder",
+    `${task.name}\n${task.date} • ${task.time}\nPriority: ${priorityName}`,
+    `smart-reminder-${task.id}-${task.date}-${task.time}`,
+    task.id
+);
 
         if (shown) {
             seen[key] = Date.now();
@@ -3944,4 +3958,142 @@ document.addEventListener(
                        }
     );
 }
+});
+// ============================================================
+// NOTIFICATION ACTIONS
+// ============================================================
+
+navigator.serviceWorker.addEventListener("message", async function (event) {
+
+    if (!event.data || event.data.type !== "REMINDER_ACTION") {
+        return;
+    }
+
+    const action = event.data.action;
+    const taskId = event.data.taskId;
+
+    if (!taskId) {
+        return;
+    }
+
+    // ----------------------------
+    // COMPLETE
+    // ----------------------------
+
+    if (action === "complete") {
+
+        await completeTask(taskId);
+
+        return;
+    }
+
+
+    // ----------------------------
+    // SNOOZE 15 MINUTES
+    // ----------------------------
+
+    if (action === "snooze") {
+
+        const task = tasks.find(
+            item => String(item.id) === String(taskId)
+        );
+
+        if (!task) {
+            console.error("Snooze: task not found.");
+            return;
+        }
+
+        const snoozeTime = new Date(
+            Date.now() + 15 * 60 * 1000
+        );
+
+        const year = snoozeTime.getFullYear();
+        const month = String(
+            snoozeTime.getMonth() + 1
+        ).padStart(2, "0");
+
+        const day = String(
+            snoozeTime.getDate()
+        ).padStart(2, "0");
+
+        const hours = String(
+            snoozeTime.getHours()
+        ).padStart(2, "0");
+
+        const minutes = String(
+            snoozeTime.getMinutes()
+        ).padStart(2, "0");
+
+        const newDate =
+            `${year}-${month}-${day}`;
+
+        const newTime =
+            `${hours}:${minutes}`;
+
+        try {
+
+            // Create the snoozed reminder
+            const response = await fetch(`${API}/add`, {
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+
+                body: new URLSearchParams({
+                    username:
+                        getLoggedInUser() || "",
+
+                    name:
+                        task.name,
+
+                    date:
+                        newDate,
+
+                    time:
+                        newTime,
+
+                    priority:
+                        String(task.priority)
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(
+                    `HTTP ${response.status}`
+                );
+            }
+
+            const result =
+                await response.json();
+
+            if (!result.success) {
+                console.error(
+                    "Could not create snoozed reminder."
+                );
+                return;
+            }
+
+            // Complete the original reminder
+            await completeTask(taskId);
+
+            // Reload reminders
+            await loadTasks();
+
+            updateStatistics();
+            updateNextTask();
+            showView(currentView);
+
+        }
+        catch (error) {
+
+            console.error(
+                "Snooze error:",
+                error
+            );
+
+        }
+    }
+
 });
